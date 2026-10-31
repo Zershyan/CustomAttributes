@@ -1,0 +1,132 @@
+package io.zershyan.customattributes.attribute;
+
+import io.zershyan.customattributes.CustomAttributes;
+import io.zershyan.customattributes.attribute.range.RangeContext;
+import io.zershyan.customattributes.attribute.range.RangeParser;
+import io.zershyan.customattributes.registry.config.ServerConfig;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.entity.ai.attributes.AttributeInstance;
+import net.minecraft.world.entity.ai.attributes.RangedAttribute;
+
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+
+/**
+ * 把配置文本翻译成某个属性当前的 {@link ValueRange}。
+ * 解析结果常驻内存，由调用方在配置可能变化时调用 {@link #reload()} 刷新，
+ * 这样逐属性求值只剩字段访问与一次表达式计算。
+ */
+public final class RangeRules {
+
+    private static List<? extends String> cachedOverrides;
+    private static Map<ResourceLocation, RangeParser.ParsedRange> overrides = Map.of();
+    private static String cachedDefault;
+    private static RangeParser.ParsedRange defaultRange;
+    private static List<? extends String> cachedBlacklist;
+    private static Set<ResourceLocation> blacklist = Set.of();
+    private static boolean loaded;
+
+    private RangeRules() {
+    }
+
+    /** 配置可能变化时调用：内容没变则什么都不做。 */
+    public static void reload() {
+        List<? extends String> rawOverrides = ServerConfig.rangeOverrides();
+        if (!rawOverrides.equals(cachedOverrides)) {
+            cachedOverrides = List.copyOf(rawOverrides);
+            Map<ResourceLocation, RangeParser.ParsedRange> parsed = new HashMap<>();
+            for (String line : cachedOverrides) {
+                parseOverride(line, parsed);
+            }
+            overrides = parsed;
+        }
+
+        String rawDefault = ServerConfig.defaultRange();
+        if (!rawDefault.equals(cachedDefault)) {
+            cachedDefault = rawDefault;
+            defaultRange = parseOrNull(rawDefault, "default_range");
+        }
+
+        List<? extends String> rawBlacklist = ServerConfig.blacklist();
+        if (!rawBlacklist.equals(cachedBlacklist)) {
+            cachedBlacklist = List.copyOf(rawBlacklist);
+            Set<ResourceLocation> ids = new HashSet<>();
+            for (String entry : cachedBlacklist) {
+                ResourceLocation id = ResourceLocation.tryParse(entry.trim());
+                if (id != null) {
+                    ids.add(id);
+                } else {
+                    CustomAttributes.LOGGER.warn("忽略无效的属性黑名单条目（不是合法的属性ID）: {}", entry);
+                }
+            }
+            blacklist = ids;
+        }
+
+        loaded = true;
+    }
+
+    /**
+     * @param id           属性ID，由调用方缓存好，避免每次求值都从 Holder 上取键
+     * @param defaultValue 该实体类型上的默认基础值，用于 {@code default} 通配符
+     * @return 可调区间；属性非区间属性、被拉黑或配置算出的方向反过来（下界大于上界）时为空
+     */
+    public static Optional<ValueRange> rangeOf(AttributeInstance instance, ResourceLocation id, double defaultValue) {
+        if (!loaded) {
+            reload();
+        }
+        if (!(instance.getAttribute().value() instanceof RangedAttribute ranged)) {
+            return Optional.empty();
+        }
+        if (blacklist.contains(id)) {
+            return Optional.empty();
+        }
+        RangeParser.ParsedRange parsed = overrides.get(id);
+        if (parsed == null) {
+            parsed = defaultRange;
+        }
+        if (parsed == null) {
+            return Optional.empty();
+        }
+
+        RangeContext context = new RangeContext(
+                instance.getValue(), instance.getBaseValue(), defaultValue, ranged.getMinValue(), ranged.getMaxValue());
+        double lower = Math.max(parsed.lower().evaluate(context), ranged.getMinValue());
+        double upper = Math.min(parsed.upper().evaluate(context), ranged.getMaxValue());
+        ValueRange range = new ValueRange(lower, upper);
+        // 下界大于上界属于"大到小"，按约定直接禁用该属性
+        return range.isInverted() ? Optional.empty() : Optional.of(range);
+    }
+
+    private static void parseOverride(String line, Map<ResourceLocation, RangeParser.ParsedRange> target) {
+        int separator = line.indexOf('=');
+        if (separator <= 0) {
+            CustomAttributes.LOGGER.warn("忽略无效的属性范围配置（缺少属性ID或'='）: {}", line);
+            return;
+        }
+        ResourceLocation id = ResourceLocation.tryParse(line.substring(0, separator).trim());
+        if (id == null) {
+            CustomAttributes.LOGGER.warn("忽略无效的属性范围配置（属性ID非法）: {}", line);
+            return;
+        }
+        RangeParser.ParsedRange parsed = parseOrNull(line.substring(separator + 1).trim(), "属性 " + id);
+        if (parsed != null) {
+            target.put(id, parsed);
+        }
+    }
+
+    private static RangeParser.ParsedRange parseOrNull(String text, String source) {
+        if (text.isBlank()) {
+            return null;
+        }
+        try {
+            return RangeParser.parse(text);
+        } catch (IllegalArgumentException e) {
+            CustomAttributes.LOGGER.warn("忽略无法解析的范围（{}）: {}", source, e.getMessage());
+            return null;
+        }
+    }
+}

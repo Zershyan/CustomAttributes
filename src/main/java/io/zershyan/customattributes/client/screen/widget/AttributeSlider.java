@@ -1,0 +1,97 @@
+package io.zershyan.customattributes.client.screen.widget;
+
+import io.zershyan.customattributes.attribute.AttributeEntry;
+import io.zershyan.customattributes.client.ClientAttributeData;
+import io.zershyan.customattributes.util.NumberFormats;
+import net.minecraft.client.gui.components.AbstractSliderButton;
+import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.util.Mth;
+
+/** 一行属性滑块：拖动只改本地显示，松手时提交。区间塌缩成一个点时不可拖动，只显示当前值。 */
+public class AttributeSlider extends AbstractSliderButton {
+    private final ResourceLocation attributeId;
+    private double rangeMin;
+    private double rangeMax;
+    private double actualValue;
+    private boolean pending;
+    /** 拖动期间收到的推送先存着，提交后再应用，避免打断拖动也避免丢掉新区间 */
+    private AttributeEntry deferred;
+
+    public AttributeSlider(AttributeEntry entry, int x, int y, int width, int height) {
+        super(x, y, width, height, Component.empty(), normalize(entry.value(), entry.min(), entry.max()));
+        this.attributeId = entry.id();
+        apply(entry);
+    }
+
+    public double rangeMin() {
+        return rangeMin;
+    }
+
+    public double rangeMax() {
+        return rangeMax;
+    }
+
+    public double selectedValue() {
+        return rangeMax > rangeMin ? rangeMin + this.value * (rangeMax - rangeMin) : actualValue;
+    }
+
+    /** 服务端推送的新数值与区间；正在拖动时留到提交后再应用。 */
+    public void onServerUpdate(AttributeEntry entry) {
+        if (pending) {
+            this.deferred = entry;
+            return;
+        }
+        apply(entry);
+    }
+
+    /** 提交未发送的拖动结果，并把拖动期间被搁置的服务端状态补上。 */
+    public void flush() {
+        if (!pending) {
+            return;
+        }
+        pending = false;
+        double target = selectedValue();
+        ClientAttributeData.submit(attributeId, false, target);
+        AttributeEntry queued = deferred;
+        deferred = null;
+        if (queued != null) {
+            apply(queued);
+        }
+    }
+
+    public void discardPending() {
+        pending = false;
+        deferred = null;
+    }
+
+    @Override
+    protected void updateMessage() {
+        setMessage(Component.literal(NumberFormats.format(selectedValue())));
+    }
+
+    @Override
+    protected void applyValue() {
+        pending = true;
+    }
+
+    /** 松手即提交，拖动过程只改本地显示。 */
+    @Override
+    public void onRelease(double mouseX, double mouseY) {
+        super.onRelease(mouseX, mouseY);
+        flush();
+    }
+
+    private void apply(AttributeEntry entry) {
+        this.actualValue = entry.value();
+        this.rangeMin = entry.min();
+        this.rangeMax = entry.max();
+        this.active = rangeMin < rangeMax;
+        this.value = normalize(actualValue, rangeMin, rangeMax);
+        updateMessage();
+    }
+
+    private static double normalize(double value, double min, double max) {
+        return max > min ? Mth.clamp((value - min) / (max - min), 0.0, 1.0) : 0.0;
+    }
+}
