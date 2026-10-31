@@ -28,6 +28,8 @@ public final class RangeRules {
     private static RangeParser.ParsedRange defaultRange;
     private static List<? extends String> cachedBlacklist;
     private static Set<ResourceLocation> blacklist = Set.of();
+    /** 夹一次也进不了区间的属性：配置自相矛盾或数值被修饰锁死，停用直到配置改动 */
+    private static final Set<ResourceLocation> unsatisfiable = new HashSet<>();
     private static boolean loaded;
 
     private RangeRules() {
@@ -35,6 +37,8 @@ public final class RangeRules {
 
     /** 配置可能变化时调用：内容没变则什么都不做。 */
     public static void reload() {
+        boolean changed = false;
+
         List<? extends String> rawOverrides = ServerConfig.rangeOverrides();
         if (!rawOverrides.equals(cachedOverrides)) {
             cachedOverrides = List.copyOf(rawOverrides);
@@ -43,12 +47,14 @@ public final class RangeRules {
                 parseOverride(line, parsed);
             }
             overrides = parsed;
+            changed = true;
         }
 
         String rawDefault = ServerConfig.defaultRange();
         if (!rawDefault.equals(cachedDefault)) {
             cachedDefault = rawDefault;
             defaultRange = parseOrNull(rawDefault, "default_range");
+            changed = true;
         }
 
         List<? extends String> rawBlacklist = ServerConfig.blacklist();
@@ -64,9 +70,20 @@ public final class RangeRules {
                 }
             }
             blacklist = ids;
+            changed = true;
         }
 
+        if (changed) {
+            unsatisfiable.clear();
+        }
         loaded = true;
+    }
+
+    /** 记录一个无论怎么调都进不了区间的属性，配置改动后自动重新尝试。 */
+    public static void markUnsatisfiable(ResourceLocation id) {
+        if (unsatisfiable.add(id)) {
+            CustomAttributes.LOGGER.warn("属性 {} 的区间无法通过调整基础值满足，已停止对它的限制；修改相关配置后会重新尝试", id);
+        }
     }
 
     /**
@@ -77,6 +94,9 @@ public final class RangeRules {
     public static Optional<ValueRange> rangeOf(AttributeInstance instance, ResourceLocation id, double defaultValue) {
         if (!loaded) {
             reload();
+        }
+        if (unsatisfiable.contains(id)) {
+            return Optional.empty();
         }
         if (!(instance.getAttribute().value() instanceof RangedAttribute ranged)) {
             return Optional.empty();

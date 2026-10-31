@@ -69,7 +69,12 @@ public final class ClientAttributeData {
             return;
         }
         Minecraft minecraft = Minecraft.getInstance();
-        if (minecraft.screen == null && minecraft.player != null) {
+        if (minecraft.player == null) {
+            // 已退出世界，别把这次请求带到下一次进服
+            pendingOpen = false;
+            return;
+        }
+        if (minecraft.screen == null) {
             pendingOpen = false;
             minecraft.setScreen(new AttributeScreen());
         }

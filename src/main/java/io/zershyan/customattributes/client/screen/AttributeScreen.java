@@ -3,6 +3,7 @@ package io.zershyan.customattributes.client.screen;
 import io.zershyan.customattributes.attribute.AttributeEntry;
 import io.zershyan.customattributes.client.ClientAttributeData;
 import io.zershyan.customattributes.client.screen.widget.AttributeSlider;
+import io.zershyan.customattributes.client.screen.widget.AttributeValueBox;
 import io.zershyan.customattributes.datagen.lang.CustomAttributesKeyLang;
 import io.zershyan.customattributes.util.NumberFormats;
 import net.minecraft.client.gui.GuiGraphics;
@@ -19,13 +20,17 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
-/** 属性调整界面：每行一个滑块，只在服务端给出的区间内可动。 */
+/** 属性调整界面：每行一个滑块、一个精确输入框和一个重置按钮，只能在服务端给出的区间内改动。 */
 public class AttributeScreen extends Screen {
     private static final int ROW_HEIGHT = 22;
-    private static final int LABEL_WIDTH = 116;
+    private static final int LABEL_WIDTH = 96;
+    private static final int BOX_WIDTH = 52;
     private static final int RESET_WIDTH = 40;
+    private static final int GAP = 4;
     private static final int WIDGET_HEIGHT = 18;
 
     private final List<Row> rows = new ArrayList<>();
@@ -44,17 +49,26 @@ public class AttributeScreen extends Screen {
     protected void init() {
         flushPending();
         rows.clear();
-        this.listWidth = Math.min(this.width - 20, 360);
+        this.listWidth = Math.min(this.width - 20, 420);
         this.listLeft = (this.width - listWidth) / 2;
         this.listTop = 32;
         this.listBottom = this.height - 34;
 
-        int sliderLeft = listLeft + LABEL_WIDTH + 4;
-        int sliderWidth = Math.max(60, listWidth - LABEL_WIDTH - RESET_WIDTH - 8);
+        int sliderLeft = listLeft + LABEL_WIDTH + GAP;
+        int sliderWidth = Math.max(60, listWidth - LABEL_WIDTH - BOX_WIDTH - RESET_WIDTH - GAP * 3);
+        int boxLeft = sliderLeft + sliderWidth + GAP;
         int resetLeft = listLeft + listWidth - RESET_WIDTH;
         int y = listTop;
         for (AttributeEntry entry : sortedEntries()) {
             AttributeSlider slider = new AttributeSlider(entry, sliderLeft, y, sliderWidth, WIDGET_HEIGHT);
+            AttributeValueBox box = new AttributeValueBox(this.font, slider, boxLeft, y, BOX_WIDTH, WIDGET_HEIGHT);
+            Runnable syncRow = () -> {
+                box.sync();
+                // 区间塌缩成一个点时没有可设的值，只留重置
+                box.setEditable(slider.rangeMax() > slider.rangeMin());
+            };
+            slider.setOnValueChanged(syncRow);
+            syncRow.run();
             Component name = attributeName(entry.id());
             Button reset = Button.builder(CustomAttributesKeyLang.ScreenReset, button -> {
                         slider.discardPending();
@@ -64,8 +78,9 @@ public class AttributeScreen extends Screen {
                     .tooltip(Tooltip.create(CustomAttributesKeyLang.ScreenResetTooltip.get(name)))
                     .build();
             addRenderableWidget(slider);
+            addRenderableWidget(box);
             addRenderableWidget(reset);
-            rows.add(new Row(entry.id(), trim(name), slider, reset, y));
+            rows.add(new Row(entry.id(), trim(name), slider, box, reset, y));
             y += ROW_HEIGHT;
         }
 
@@ -113,7 +128,7 @@ public class AttributeScreen extends Screen {
         if (rows.isEmpty()) {
             graphics.drawCenteredString(this.font, CustomAttributesKeyLang.ScreenEmpty, this.width / 2, listTop + 8, 0xA0A0A0);
         }
-
+        renderScrollBar(graphics);
         doneButton.render(graphics, mouseX, mouseY, partialTick);
 
         for (Row row : rows) {
@@ -164,9 +179,28 @@ public class AttributeScreen extends Screen {
             boolean visible = y >= listTop - WIDGET_HEIGHT + 2 && y + WIDGET_HEIGHT <= listBottom;
             row.slider().setY(y);
             row.slider().visible = visible;
+            row.box().setY(y);
+            row.box().visible = visible;
             row.reset().setY(y);
             row.reset().visible = visible;
+            if (!visible && row.box().isFocused()) {
+                row.box().setFocused(false);
+            }
         }
+    }
+
+    private void renderScrollBar(GuiGraphics graphics) {
+        int max = maxScroll();
+        if (max <= 0) {
+            return;
+        }
+        int view = listBottom - listTop;
+        int content = rows.size() * ROW_HEIGHT;
+        int barHeight = Math.max(16, view * view / content);
+        int barTop = listTop + (view - barHeight) * scroll / max;
+        int x = listLeft + listWidth + 3;
+        graphics.fill(x, listTop, x + 3, listBottom, 0x40000000);
+        graphics.fill(x, barTop, x + 3, barTop + barHeight, 0xA0FFFFFF);
     }
 
     private int maxScroll() {
@@ -175,7 +209,11 @@ public class AttributeScreen extends Screen {
 
     private List<AttributeEntry> sortedEntries() {
         List<AttributeEntry> entries = new ArrayList<>(ClientAttributeData.entries());
-        entries.sort(Comparator.comparing(entry -> attributeName(entry.id()).getString(), String.CASE_INSENSITIVE_ORDER));
+        Map<ResourceLocation, String> names = new HashMap<>();
+        for (AttributeEntry entry : entries) {
+            names.put(entry.id(), attributeName(entry.id()).getString());
+        }
+        entries.sort(Comparator.comparing(entry -> names.get(entry.id()), String.CASE_INSENSITIVE_ORDER));
         return entries;
     }
 
@@ -192,6 +230,7 @@ public class AttributeScreen extends Screen {
         return Component.literal(this.font.plainSubstrByWidth(raw, LABEL_WIDTH - 12) + "...");
     }
 
-    private record Row(ResourceLocation id, Component label, AttributeSlider slider, Button reset, int baseY) {
+    private record Row(ResourceLocation id, Component label, AttributeSlider slider, AttributeValueBox box,
+                       Button reset, int baseY) {
     }
 }

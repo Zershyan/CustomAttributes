@@ -8,6 +8,7 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.players.PlayerList;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.ai.attributes.Attribute;
 import net.minecraft.world.entity.ai.attributes.AttributeInstance;
@@ -25,9 +26,10 @@ import java.util.UUID;
 /** 服务端权威逻辑：谁在看界面、他看到什么值、他的修改请求怎么落到属性上。 */
 public final class AttributeManager {
     private static final double EPSILON = 1.0e-6;
-    /** 打开界面的最小间隔（刻），挡住客户端重复请求整表重建 */
-    private static final int OPEN_COOLDOWN_TICKS = 5;
-    private static final int MAX_MODIFY_PER_TICK = 8;
+    /** 打开界面的最小间隔（刻）：只挡重复重建整表，不能长到让"关掉立刻再开"失灵 */
+    private static final int OPEN_COOLDOWN_TICKS = 2;
+    /** 同一 tick 内每玩家最多受理的提交数：要容得下关闭界面时一次补交多行键盘调整 */
+    private static final int MAX_MODIFY_PER_TICK = 32;
     private static final Map<UUID, Watch> WATCHES = new HashMap<>();
     /** 玩家拥有的属性以及它们的默认基础值，只构建一次：属性注册与默认值在加载完成后不再变化 */
     private static List<Target> targets;
@@ -44,7 +46,7 @@ public final class AttributeManager {
         }
         RangeRules.reload();
         List<AttributeEntry> entries = buildEntries(player);
-        Watch watch = new Watch(player, now);
+        Watch watch = new Watch(now);
         for (AttributeEntry entry : entries) {
             watch.entries.put(entry.id(), entry);
         }
@@ -61,11 +63,16 @@ public final class AttributeManager {
      * 关闭模组功能时清空订阅并通知界面，避免客户端停留在过期数据上。
      */
     public static void tick(MinecraftServer server) {
-        WATCHES.entrySet().removeIf(entry -> entry.getValue().player.hasDisconnected());
+        PlayerList playerList = server.getPlayerList();
+        // 只按 UUID 判活：死亡重生会换掉 ServerPlayer 实例，持有实例引用会变旧
+        WATCHES.keySet().removeIf(uuid -> playerList.getPlayer(uuid) == null);
         if (!ServerConfig.isEnabled()) {
             if (!WATCHES.isEmpty()) {
-                WATCHES.values().forEach(watch -> PacketDistributor.sendToPlayer(
-                        watch.player, new AttributeListPacket(List.of())));
+                for (ServerPlayer player : playerList.getPlayers()) {
+                    if (WATCHES.containsKey(player.getUUID())) {
+                        PacketDistributor.sendToPlayer(player, new AttributeListPacket(List.of()));
+                    }
+                }
                 WATCHES.clear();
             }
             return;
@@ -74,31 +81,53 @@ public final class AttributeManager {
             return;
         }
         RangeRules.reload();
-        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
-            enforcePlayer(player, WATCHES.get(player.getUUID()));
+        for (ServerPlayer player : playerList.getPlayers()) {
+            Watch watch = WATCHES.get(player.getUUID());
+            enforcePlayer(player, watch);
+            if (watch != null && watch.resync) {
+                watch.resync = false;
+                resync(player, watch);
+            }
         }
+    }
+
+    /** 结构变了就整表重发：客户端据此增删行，比逐条增量简单且不会残留。 */
+    private static void resync(ServerPlayer player, Watch watch) {
+        watch.entries.clear();
+        List<AttributeEntry> entries = buildEntries(player);
+        for (AttributeEntry entry : entries) {
+            watch.entries.put(entry.id(), entry);
+        }
+        PacketDistributor.sendToPlayer(player, new AttributeListPacket(entries));
     }
 
     /**
      * 单次遍历完成两件事：把超出区间的最终值夹回区间；给打开了界面的玩家推送变化。
-     * 未订阅的玩家只做夹取，不产生任何网络流量。
+     * 未订阅的玩家只做夹取，不产生任何网络流量。列表结构变化（属性出现或区间失效）时打标记，稍后整表重发。
      */
     private static void enforcePlayer(ServerPlayer player, Watch watch) {
         for (Target target : targets()) {
             AttributeInstance instance = player.getAttribute(target.holder);
             if (instance == null) {
+                forget(watch, target.id);
                 continue;
             }
             ValueRange range = RangeRules.rangeOf(instance, target.id, target.defaultValue).orElse(null);
             if (range == null) {
+                // 区间失效（下界大于上界、被拉黑、配置无法满足）：界面上的这一行应当消失
+                forget(watch, target.id);
                 continue;
             }
             double value = instance.getValue();
             if (value < range.min() || value > range.max()) {
-                setFinalValue(instance, range.clamp(value));
-                value = instance.getValue();
+                value = clampInto(instance, target, range, value);
+                if (Double.isNaN(value)) {
+                    forget(watch, target.id);
+                    continue;
+                }
                 range = RangeRules.rangeOf(instance, target.id, target.defaultValue).orElse(null);
                 if (range == null) {
+                    forget(watch, target.id);
                     continue;
                 }
             }
@@ -106,12 +135,43 @@ public final class AttributeManager {
                 continue;
             }
             AttributeEntry last = watch.entries.get(target.id);
-            if (last == null || !changed(last, value, range)) {
+            if (last == null) {
+                // 新出现的可调属性：客户端还不知道这一行，需要整表重发
+                watch.resync = true;
+                continue;
+            }
+            if (!changed(last, value, range)) {
                 continue;
             }
             AttributeEntry updated = new AttributeEntry(target.id, value, range.min(), range.max());
             watch.entries.put(target.id, updated);
             PacketDistributor.sendToPlayer(player, new AttributeUpdatePacket(updated));
+        }
+    }
+
+    /**
+     * 把越界值夹回区间，并确认夹完之后真的在区间里。
+     * 夹不进说明配置自相矛盾（例如上界跟着当前值一起降）或数值被修饰锁死，此时回滚并停用该属性。
+     *
+     * @return 夹取后的最终值；无法满足时返回 {@link Double#NaN}
+     */
+    private static double clampInto(AttributeInstance instance, Target target, ValueRange range, double value) {
+        double baseBefore = instance.getBaseValue();
+        setFinalValue(instance, range.clamp(value));
+        double clamped = instance.getValue();
+        ValueRange after = RangeRules.rangeOf(instance, target.id, target.defaultValue).orElse(null);
+        if (after == null || clamped < after.min() || clamped > after.max()) {
+            instance.setBaseValue(baseBefore);
+            RangeRules.markUnsatisfiable(target.id);
+            return Double.NaN;
+        }
+        return clamped;
+    }
+
+    /** 属性从界面上消失时同步掉订阅快照里的条目，并请求整表重发。 */
+    private static void forget(Watch watch, ResourceLocation id) {
+        if (watch != null && watch.entries.remove(id) != null) {
+            watch.resync = true;
         }
     }
 
@@ -254,14 +314,13 @@ public final class AttributeManager {
 
     /** 订阅快照：记录上次下发的完整条目，数值与区间任一变化都要重新推送。 */
     private static final class Watch {
-        private final ServerPlayer player;
         private final Map<ResourceLocation, AttributeEntry> entries = new HashMap<>();
         private final int lastOpenTick;
         private int budgetTick = -1;
         private int budget;
+        private boolean resync;
 
-        private Watch(ServerPlayer player, int lastOpenTick) {
-            this.player = player;
+        private Watch(int lastOpenTick) {
             this.lastOpenTick = lastOpenTick;
         }
 

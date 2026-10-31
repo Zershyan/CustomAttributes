@@ -8,7 +8,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 
-/** 一行属性滑块：拖动只改本地显示，松手时提交。区间塌缩成一个点时不可拖动，只显示当前值。 */
+/** 一行属性滑块：拖动只改本地显示，松手时提交。区间塌缩成一个点时不可拖动，数值以旁边的输入框为准。 */
 public class AttributeSlider extends AbstractSliderButton {
     private final ResourceLocation attributeId;
     private double rangeMin;
@@ -17,11 +17,17 @@ public class AttributeSlider extends AbstractSliderButton {
     private boolean pending;
     /** 拖动期间收到的推送先存着，提交后再应用，避免打断拖动也避免丢掉新区间 */
     private AttributeEntry deferred;
+    private Runnable onValueChanged = () -> {
+    };
 
     public AttributeSlider(AttributeEntry entry, int x, int y, int width, int height) {
         super(x, y, width, height, Component.empty(), normalize(entry.value(), entry.min(), entry.max()));
         this.attributeId = entry.id();
         apply(entry);
+    }
+
+    public ResourceLocation attributeId() {
+        return attributeId;
     }
 
     public double rangeMin() {
@@ -34,6 +40,11 @@ public class AttributeSlider extends AbstractSliderButton {
 
     public double selectedValue() {
         return rangeMax > rangeMin ? rangeMin + this.value * (rangeMax - rangeMin) : actualValue;
+    }
+
+    /** 数值变化时通知同一行的输入框同步显示。 */
+    public void setOnValueChanged(Runnable listener) {
+        this.onValueChanged = listener;
     }
 
     /** 服务端推送的新数值与区间；正在拖动时留到提交后再应用。 */
@@ -63,16 +74,19 @@ public class AttributeSlider extends AbstractSliderButton {
     public void discardPending() {
         pending = false;
         deferred = null;
+        onValueChanged.run();
     }
 
     @Override
     protected void updateMessage() {
+        // 滑块上也显示数值：拖动时不用去看输入框，朗读提示也依赖它
         setMessage(Component.literal(NumberFormats.format(selectedValue())));
     }
 
     @Override
     protected void applyValue() {
         pending = true;
+        onValueChanged.run();
     }
 
     /** 松手即提交，拖动过程只改本地显示。 */
@@ -89,6 +103,7 @@ public class AttributeSlider extends AbstractSliderButton {
         this.active = rangeMin < rangeMax;
         this.value = normalize(actualValue, rangeMin, rangeMax);
         updateMessage();
+        onValueChanged.run();
     }
 
     private static double normalize(double value, double min, double max) {
