@@ -1,0 +1,5 @@
+# 统一换行：脚本用 LF，批处理用 CRLF，避免 Windows 检出后 gradlew 失效
+* text=auto eol=lf
+*.bat text eol=crlf
+*.jar binary
+*.png binary
