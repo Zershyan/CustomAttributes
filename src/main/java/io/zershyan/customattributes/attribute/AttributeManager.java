@@ -134,19 +134,33 @@ public final class AttributeManager {
             if (watch == null) {
                 continue;
             }
+            AttributeEntry candidate = entryOf(target.id, target.defaultValue, instance, value, range);
             AttributeEntry last = watch.entries.get(target.id);
             if (last == null) {
                 // 新出现的可调属性：客户端还不知道这一行，需要整表重发
                 watch.resync = true;
                 continue;
             }
-            if (!changed(last, value, range)) {
+            if (!differs(last, candidate)) {
                 continue;
             }
-            AttributeEntry updated = new AttributeEntry(target.id, value, range.min(), range.max());
-            watch.entries.put(target.id, updated);
-            PacketDistributor.sendToPlayer(player, new AttributeUpdatePacket(updated));
+            watch.entries.put(target.id, candidate);
+            PacketDistributor.sendToPlayer(player, new AttributeUpdatePacket(candidate));
         }
+    }
+
+    private static AttributeEntry entryOf(ResourceLocation id, double defaultValue, AttributeInstance instance,
+                                          double value, ValueRange range) {
+        boolean modified = Math.abs(instance.getBaseValue() - defaultValue) > EPSILON;
+        return new AttributeEntry(id, value, range.min(), range.max(), modified);
+    }
+
+    /** 数值、区间或"是否已被改动"任一变化都要下发，否则界面会停在旧状态。 */
+    private static boolean differs(AttributeEntry last, AttributeEntry current) {
+        return Math.abs(current.value() - last.value()) > EPSILON
+                || last.min() != current.min()
+                || last.max() != current.max()
+                || last.modified() != current.modified();
     }
 
     /**
@@ -175,12 +189,6 @@ public final class AttributeManager {
         }
     }
 
-    /** 数值或可调区间任一变化都要下发，否则配置重载后的界面会一直显示旧区间。 */
-    private static boolean changed(AttributeEntry last, double value, ValueRange range) {
-        return Math.abs(value - last.value()) > EPSILON
-                || last.min() != range.min()
-                || last.max() != range.max();
-    }
 
     /**
      * 处理玩家提交的修改或重置，只有打开过界面的玩家才会被受理。
@@ -226,7 +234,7 @@ public final class AttributeManager {
         if (range == null) {
             return;
         }
-        AttributeEntry entry = new AttributeEntry(id, instance.getValue(), range.min(), range.max());
+        AttributeEntry entry = entryOf(id, defaultValue, instance, instance.getValue(), range);
         watch.entries.put(id, entry);
         PacketDistributor.sendToPlayer(player, new AttributeUpdatePacket(entry));
     }
@@ -266,7 +274,7 @@ public final class AttributeManager {
             }
             ValueRange range = RangeRules.rangeOf(instance, target.id, target.defaultValue).orElse(null);
             if (range != null) {
-                entries.add(new AttributeEntry(target.id, instance.getValue(), range.min(), range.max()));
+                entries.add(entryOf(target.id, target.defaultValue, instance, instance.getValue(), range));
             }
         }
         return entries;

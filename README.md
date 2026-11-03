@@ -30,9 +30,32 @@ NeoForge 1.21.1 模组：在游戏内查看并调整**自己的**属性，可调
 ```toml
 [general]
 	enabled = true                     # 总开关
+	list_mode = "WHITELIST"            # WHITELIST：只有名单内的可调；BLACKLIST：只有名单内的不可调
+	whitelist = [                      # 白名单模式下放行的属性ID，默认预置以下几项
+		"minecraft:generic.movement_speed",
+		"minecraft:generic.jump_strength",
+		"minecraft:generic.step_height",
+		"minecraft:generic.safe_fall_distance",
+		"minecraft:player.sneaking_speed",
+		"neoforge:swim_speed",
+		"minecraft:generic.movement_efficiency",
+		"minecraft:generic.water_movement_efficiency",
+		"minecraft:generic.attack_damage",
+		"minecraft:generic.attack_speed",
+		"minecraft:generic.attack_knockback",
+		"minecraft:player.sweeping_damage_ratio",
+		"minecraft:generic.armor",
+		"minecraft:generic.armor_toughness",
+		"minecraft:generic.max_health",
+		"minecraft:player.block_interaction_range",
+		"minecraft:player.entity_interaction_range",
+		"minecraft:player.block_break_speed",
+		"minecraft:player.submerged_mining_speed",
+		"minecraft:player.mining_efficiency"
+	]
+	blacklist = []                     # 黑名单模式下屏蔽的属性ID；白名单模式下忽略本项
 	default_range = "[min, current]"   # 未单独配置的属性用它；留空则该属性不显示
-	blacklist = []                     # 完全不显示、也不可修改的属性ID
-	sync_interval_ticks = 1            # 夹取越界数值并推送变化的间隔（刻）
+	sync_interval_ticks = 5            # 夹取越界数值并推送变化的间隔（刻）
 
 [ranges]
 	entries = [
@@ -41,7 +64,9 @@ NeoForge 1.21.1 模组：在游戏内查看并调整**自己的**属性，可调
 	]
 ```
 
-优先级：`blacklist`（排除）→ `ranges.entries` → `default_range`。写错的行会打日志并忽略，不影响其它行。
+筛选顺序：先按 `list_mode` 决定哪个属性允许出现在界面上 → 再用 `ranges.entries` 或 `default_range` 算出它的可调区间。写错的行会打日志并忽略，不影响其它行。
+
+**默认是白名单模式**，并且预置了 20 个常见属性（移动与手感 8 个、战斗 7 个、交互与采集 5 个）——它们的共同点是"调低只会更难受，不会让人卡死"。想放开别的属性，把 ID 加进 `whitelist`；想先看有哪些 ID，可以临时把 `list_mode` 改成 `"BLACKLIST"` 打开界面，鼠标悬停属性名会显示 ID，抄完再改回 `"WHITELIST"`。把 `whitelist` 清空则等于全部不放行。
 
 ## 范围表达式
 

@@ -14,6 +14,7 @@ public class AttributeSlider extends AbstractSliderButton {
     private double rangeMin;
     private double rangeMax;
     private double actualValue;
+    private boolean modified;
     private boolean pending;
     /** 拖动期间收到的推送先存着，提交后再应用，避免打断拖动也避免丢掉新区间 */
     private AttributeEntry deferred;
@@ -36,6 +37,11 @@ public class AttributeSlider extends AbstractSliderButton {
 
     public double rangeMax() {
         return rangeMax;
+    }
+
+    /** 该属性的基础值是否已被改离默认值。 */
+    public boolean isModified() {
+        return modified;
     }
 
     public double selectedValue() {
@@ -100,6 +106,7 @@ public class AttributeSlider extends AbstractSliderButton {
         this.actualValue = entry.value();
         this.rangeMin = entry.min();
         this.rangeMax = entry.max();
+        this.modified = entry.modified();
         this.active = rangeMin < rangeMax;
         this.value = normalize(actualValue, rangeMin, rangeMax);
         updateMessage();

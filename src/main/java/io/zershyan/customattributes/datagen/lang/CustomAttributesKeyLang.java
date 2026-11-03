@@ -22,6 +22,9 @@ public class CustomAttributesKeyLang extends CustomAttributesLang {
     public static final String KeyOpen = entryString(getKeyDesc("open"), "Open Attribute Screen", "打开属性调整界面");
 
     public static final MutableComponent ScreenTitle = entry(ScreenPrefix + "title", "Attributes", "属性调整");
+    public static final MutableComponent ScreenHint = entry(ScreenPrefix + "hint",
+            "Drag or type a value; Reset restores the default.",
+            "拖动滑块，或在输入框填数值后回车。重置恢复默认值。");
     public static final MutableComponent ScreenEmpty = entry(ScreenPrefix + "empty", "No attribute can be edited", "没有可调整的属性");
     public static final MutableComponent ScreenReset = entry(ScreenPrefix + "reset", "Reset", "重置");
     public static final MutableComponent ScreenDone = entry(ScreenPrefix + "done", "Done", "完成");

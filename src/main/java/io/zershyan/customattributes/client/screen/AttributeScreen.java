@@ -6,6 +6,7 @@ import io.zershyan.customattributes.client.screen.widget.AttributeSlider;
 import io.zershyan.customattributes.client.screen.widget.AttributeValueBox;
 import io.zershyan.customattributes.datagen.lang.CustomAttributesKeyLang;
 import io.zershyan.customattributes.util.NumberFormats;
+import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.Renderable;
@@ -32,6 +33,9 @@ public class AttributeScreen extends Screen {
     private static final int RESET_WIDTH = 40;
     private static final int GAP = 4;
     private static final int WIDGET_HEIGHT = 18;
+    private static final int PANEL_PADDING = 6;
+    private static final int LABEL_COLOR = 0xE0E0E0;
+    private static final int LABEL_MODIFIED_COLOR = 0xFFD98A;
 
     private final List<Row> rows = new ArrayList<>();
     private int listLeft;
@@ -49,9 +53,9 @@ public class AttributeScreen extends Screen {
     protected void init() {
         flushPending();
         rows.clear();
-        this.listWidth = Math.min(this.width - 20, 420);
+        this.listWidth = Math.min(this.width - 32, 420);
         this.listLeft = (this.width - listWidth) / 2;
-        this.listTop = 32;
+        this.listTop = 42;
         this.listBottom = this.height - 34;
 
         int sliderLeft = listLeft + LABEL_WIDTH + GAP;
@@ -69,6 +73,7 @@ public class AttributeScreen extends Screen {
             };
             slider.setOnValueChanged(syncRow);
             syncRow.run();
+
             Component name = attributeName(entry.id());
             Button reset = Button.builder(CustomAttributesKeyLang.ScreenReset, button -> {
                         slider.discardPending();
@@ -77,10 +82,12 @@ public class AttributeScreen extends Screen {
                     .bounds(resetLeft, y, RESET_WIDTH, WIDGET_HEIGHT)
                     .tooltip(Tooltip.create(CustomAttributesKeyLang.ScreenResetTooltip.get(name)))
                     .build();
+            reset.active = entry.modified();
+
             addRenderableWidget(slider);
             addRenderableWidget(box);
             addRenderableWidget(reset);
-            rows.add(new Row(entry.id(), trim(name), slider, box, reset, y));
+            rows.add(new Row(entry.id(), name, trim(name), slider, box, reset, y));
             y += ROW_HEIGHT;
         }
 
@@ -104,6 +111,7 @@ public class AttributeScreen extends Screen {
         for (Row row : rows) {
             if (row.id().equals(entry.id())) {
                 row.slider().onServerUpdate(entry);
+                row.reset().active = row.slider().isModified();
                 return;
             }
         }
@@ -112,13 +120,20 @@ public class AttributeScreen extends Screen {
     @Override
     public void render(@NotNull GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         renderBackground(graphics, mouseX, mouseY, partialTick);
-        graphics.drawCenteredString(this.font, this.title, this.width / 2, 14, 0xFFFFFF);
+        renderFrame(graphics);
 
         graphics.enableScissor(listLeft, listTop, listLeft + listWidth, listBottom);
-        for (Row row : rows) {
-            if (row.slider().visible) {
-                graphics.drawString(this.font, row.label(), listLeft, row.slider().getY() + 5, 0xE0E0E0, false);
+        for (int i = 0; i < rows.size(); i++) {
+            Row row = rows.get(i);
+            if (!row.slider().visible) {
+                continue;
             }
+            int rowTop = row.slider().getY() - 2;
+            if ((i & 1) == 0) {
+                graphics.fill(listLeft - 2, rowTop, listLeft + listWidth + 2, rowTop + ROW_HEIGHT, 0x14FFFFFF);
+            }
+            graphics.drawString(this.font, row.label(), listLeft, row.slider().getY() + 5,
+                    row.slider().isModified() ? LABEL_MODIFIED_COLOR : LABEL_COLOR, false);
         }
         for (Renderable renderable : this.renderables) {
             renderable.render(graphics, mouseX, mouseY, partialTick);
@@ -126,17 +141,45 @@ public class AttributeScreen extends Screen {
         graphics.disableScissor();
 
         if (rows.isEmpty()) {
-            graphics.drawCenteredString(this.font, CustomAttributesKeyLang.ScreenEmpty, this.width / 2, listTop + 8, 0xA0A0A0);
+            graphics.drawCenteredString(this.font, CustomAttributesKeyLang.ScreenEmpty, this.width / 2, listTop + 12, 0xA0A0A0);
         }
         renderScrollBar(graphics);
         doneButton.render(graphics, mouseX, mouseY, partialTick);
+        renderRowTooltip(graphics, mouseX, mouseY);
+    }
 
+    /** 标题、操作提示与列表面板，都在裁剪区之外画一次。 */
+    private void renderFrame(GuiGraphics graphics) {
+        graphics.drawCenteredString(this.font, this.title, this.width / 2, 12, 0xFFFFFF);
+        graphics.drawCenteredString(this.font, CustomAttributesKeyLang.ScreenHint, this.width / 2, 26, 0x909090);
+
+        int left = listLeft - PANEL_PADDING;
+        int right = listLeft + listWidth + PANEL_PADDING + 8;
+        int top = listTop - PANEL_PADDING;
+        int bottom = listBottom + PANEL_PADDING;
+        graphics.fill(left, top, right, bottom, 0x66000000);
+        graphics.renderOutline(left, top, right - left, bottom - top, 0x40FFFFFF);
+    }
+
+    private void renderRowTooltip(GuiGraphics graphics, int mouseX, int mouseY) {
         for (Row row : rows) {
-            AttributeSlider slider = row.slider();
-            if (slider.visible && slider.isMouseOver(mouseX, mouseY)) {
+            if (!row.slider().visible) {
+                continue;
+            }
+            int rowTop = row.slider().getY();
+            if (mouseY >= rowTop && mouseY < rowTop + WIDGET_HEIGHT
+                    && mouseX >= listLeft && mouseX < listLeft + LABEL_WIDTH) {
+                // 名称可能被截断，悬停给出完整名称与属性ID，方便对着写配置
+                graphics.renderComponentTooltip(this.font, List.of(
+                        row.fullName(),
+                        Component.literal(row.id().toString()).withStyle(ChatFormatting.GRAY)), mouseX, mouseY);
+                return;
+            }
+            if (row.slider().isMouseOver(mouseX, mouseY)) {
                 graphics.renderTooltip(this.font, CustomAttributesKeyLang.ScreenRange.get(
-                        NumberFormats.format(slider.rangeMin()), NumberFormats.format(slider.rangeMax())), mouseX, mouseY);
-                break;
+                        NumberFormats.format(row.slider().rangeMin()),
+                        NumberFormats.format(row.slider().rangeMax())), mouseX, mouseY);
+                return;
             }
         }
     }
@@ -198,9 +241,9 @@ public class AttributeScreen extends Screen {
         int content = rows.size() * ROW_HEIGHT;
         int barHeight = Math.max(16, view * view / content);
         int barTop = listTop + (view - barHeight) * scroll / max;
-        int x = listLeft + listWidth + 3;
-        graphics.fill(x, listTop, x + 3, listBottom, 0x40000000);
-        graphics.fill(x, barTop, x + 3, barTop + barHeight, 0xA0FFFFFF);
+        int x = listLeft + listWidth + PANEL_PADDING + 2;
+        graphics.fill(x, listTop, x + 4, listBottom, 0x30FFFFFF);
+        graphics.fill(x, barTop, x + 4, barTop + barHeight, 0xB0FFFFFF);
     }
 
     private int maxScroll() {
@@ -230,7 +273,7 @@ public class AttributeScreen extends Screen {
         return Component.literal(this.font.plainSubstrByWidth(raw, LABEL_WIDTH - 12) + "...");
     }
 
-    private record Row(ResourceLocation id, Component label, AttributeSlider slider, AttributeValueBox box,
-                       Button reset, int baseY) {
+    private record Row(ResourceLocation id, Component fullName, Component label, AttributeSlider slider,
+                       AttributeValueBox box, Button reset, int baseY) {
     }
 }
