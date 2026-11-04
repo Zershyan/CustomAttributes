@@ -111,7 +111,7 @@ public final class RangeRules {
         if (unsatisfiable.contains(id) || !isAllowed(id)) {
             return Optional.empty();
         }
-        if (!(instance.getAttribute().value() instanceof RangedAttribute ranged)) {
+        if (!(instance.getAttribute() instanceof RangedAttribute ranged)) {
             return Optional.empty();
         }
         RangeParser.ParsedRange parsed = overrides.get(id);

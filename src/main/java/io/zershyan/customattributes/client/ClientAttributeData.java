@@ -2,12 +2,11 @@ package io.zershyan.customattributes.client;
 
 import io.zershyan.customattributes.attribute.AttributeEntry;
 import io.zershyan.customattributes.client.screen.AttributeScreen;
+import io.zershyan.customattributes.registry.CustomAttributesPackets;
 import io.zershyan.customattributes.registry.packet.ModifyAttributePacket;
 import io.zershyan.customattributes.registry.packet.SubscriptionPacket;
 import net.minecraft.client.Minecraft;
-import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
-import net.neoforged.neoforge.network.PacketDistributor;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -23,17 +22,23 @@ public final class ClientAttributeData {
     }
 
     public static void requestOpen() {
-        send(new SubscriptionPacket(true));
+        if (Minecraft.getInstance().getConnection() != null) {
+            CustomAttributesPackets.INSTANCE.sendToServer(new SubscriptionPacket(true));
+        }
     }
 
     public static void close() {
         pendingOpen = false;
         ENTRIES.clear();
-        send(new SubscriptionPacket(false));
+        if (Minecraft.getInstance().getConnection() != null) {
+            CustomAttributesPackets.INSTANCE.sendToServer(new SubscriptionPacket(false));
+        }
     }
 
     public static void submit(ResourceLocation id, boolean reset, double value) {
-        send(new ModifyAttributePacket(id, reset, value));
+        if (Minecraft.getInstance().getConnection() != null) {
+            CustomAttributesPackets.INSTANCE.sendToServer(new ModifyAttributePacket(id, reset, value));
+        }
     }
 
     public static List<AttributeEntry> entries() {
@@ -78,12 +83,5 @@ public final class ClientAttributeData {
             pendingOpen = false;
             minecraft.setScreen(new AttributeScreen());
         }
-    }
-
-    private static void send(CustomPacketPayload payload) {
-        if (Minecraft.getInstance().getConnection() == null) {
-            return;
-        }
-        PacketDistributor.sendToServer(payload);
     }
 }

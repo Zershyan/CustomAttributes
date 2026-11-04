@@ -3,20 +3,23 @@ package io.zershyan.customattributes.handler.common;
 import io.zershyan.customattributes.CustomAttributes;
 import io.zershyan.customattributes.attribute.AttributeManager;
 import net.minecraft.server.level.ServerPlayer;
-import net.neoforged.bus.api.SubscribeEvent;
-import net.neoforged.fml.common.EventBusSubscriber;
-import net.neoforged.neoforge.event.entity.player.PlayerEvent;
-import net.neoforged.neoforge.event.tick.ServerTickEvent;
+import net.minecraftforge.event.TickEvent;
+import net.minecraftforge.event.entity.player.PlayerEvent;
+import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.fml.common.Mod;
 
 /** 服务端驱动的同步：订阅期间属性变化即时推送给本人，玩家退出时清理订阅。 */
-@EventBusSubscriber(modid = CustomAttributes.MODID)
+@Mod.EventBusSubscriber(modid = CustomAttributes.MODID)
 public final class AttributeSyncHandler {
 
     private AttributeSyncHandler() {
     }
 
     @SubscribeEvent
-    public static void onServerTick(ServerTickEvent.Post event) {
+    public static void onServerTick(TickEvent.ServerTickEvent event) {
+        if (event.phase != TickEvent.Phase.END) {
+            return;
+        }
         AttributeManager.tick(event.getServer());
     }
 

@@ -1,10 +1,11 @@
 package io.zershyan.customattributes.attribute;
 
-import io.zershyan.customattributes.CustomAttributes;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.ai.attributes.Attribute;
 import net.minecraft.world.entity.ai.attributes.AttributeInstance;
 import net.minecraft.world.entity.ai.attributes.AttributeModifier;
+
+import java.util.UUID;
 
 /**
  * 用一个本模组专属的修饰器把属性最终值钉在指定数值上。
@@ -14,7 +15,8 @@ import net.minecraft.world.entity.ai.attributes.AttributeModifier;
  */
 public final class AttributeAdjustments {
     /** 本模组表达调整量用的修饰器 ID，每个属性各持一份同 ID 的修饰器。 */
-    private static final ResourceLocation ADJUSTMENT_ID = CustomAttributes.id("adjustment");
+    private static final UUID ADJUSTMENT_ID = UUID.fromString("8d3f0b6a-7c1e-4f1a-9b0e-c0a5b7d2f3a1");
+    private static final String ADJUSTMENT_NAME = "customattributes:adjustment";
     private static final double EPSILON = 1.0e-9;
 
     private AttributeAdjustments() {
@@ -31,7 +33,7 @@ public final class AttributeAdjustments {
     }
 
     /**
-     * 让最终值等于 {@code target}：按当前的外部修饰反解出需要的偏移量，写成 ADD_VALUE 修饰器。
+     * 让最终值等于 {@code target}：按当前的外部修饰反解出需要的偏移量，写成 ADDITION 修饰器。
      *
      * @return 是否成功；属性被外部修饰钉死（合成系数为 0）时返回 false
      */
@@ -40,14 +42,15 @@ public final class AttributeAdjustments {
         if (!Double.isFinite(factor) || Math.abs(factor) <= EPSILON) {
             return false;
         }
-        Attribute attribute = instance.getAttribute().value();
+        Attribute attribute = instance.getAttribute();
         double offset = attribute.sanitizeValue(target) / factor - instance.getBaseValue() - addition(instance);
         if (Math.abs(offset) <= EPSILON) {
             clear(instance);
             return true;
         }
-        instance.addOrReplacePermanentModifier(
-                new AttributeModifier(ADJUSTMENT_ID, offset, AttributeModifier.Operation.ADD_VALUE));
+        instance.removeModifier(ADJUSTMENT_ID);
+        instance.addPermanentModifier(
+                new AttributeModifier(ADJUSTMENT_ID, ADJUSTMENT_NAME, offset, AttributeModifier.Operation.ADDITION));
         return true;
     }
 
@@ -57,25 +60,25 @@ public final class AttributeAdjustments {
         double multipliedBase = 0;
         double multipliedTotal = 1;
         for (AttributeModifier modifier : instance.getModifiers()) {
-            if (!includeAdjustment && modifier.id().equals(ADJUSTMENT_ID)) {
+            if (!includeAdjustment && isOurs(modifier)) {
                 continue;
             }
-            switch (modifier.operation()) {
-                case ADD_VALUE -> addition += modifier.amount();
-                case ADD_MULTIPLIED_BASE -> multipliedBase += modifier.amount();
-                case ADD_MULTIPLIED_TOTAL -> multipliedTotal *= 1.0 + modifier.amount();
+            switch (modifier.getOperation()) {
+                case ADDITION -> addition += modifier.getAmount();
+                case MULTIPLY_BASE -> multipliedBase += modifier.getAmount();
+                case MULTIPLY_TOTAL -> multipliedTotal *= 1.0 + modifier.getAmount();
             }
         }
         double value = (base + addition) * (1.0 + multipliedBase) * multipliedTotal;
-        return instance.getAttribute().value().sanitizeValue(value);
+        return instance.getAttribute().sanitizeValue(value);
     }
 
-    /** 除本模组之外所有 ADD_VALUE 修饰之和。 */
+    /** 除本模组之外所有 ADDITION 修饰之和。 */
     private static double addition(AttributeInstance instance) {
         double sum = 0;
         for (AttributeModifier modifier : instance.getModifiers()) {
-            if (!modifier.id().equals(ADJUSTMENT_ID) && modifier.operation() == AttributeModifier.Operation.ADD_VALUE) {
-                sum += modifier.amount();
+            if (!isOurs(modifier) && modifier.getOperation() == AttributeModifier.Operation.ADDITION) {
+                sum += modifier.getAmount();
             }
         }
         return sum;
@@ -86,16 +89,20 @@ public final class AttributeAdjustments {
         double multipliedBase = 0;
         double multipliedTotal = 1;
         for (AttributeModifier modifier : instance.getModifiers()) {
-            if (modifier.id().equals(ADJUSTMENT_ID)) {
+            if (isOurs(modifier)) {
                 continue;
             }
-            switch (modifier.operation()) {
-                case ADD_MULTIPLIED_BASE -> multipliedBase += modifier.amount();
-                case ADD_MULTIPLIED_TOTAL -> multipliedTotal *= 1.0 + modifier.amount();
-                case ADD_VALUE -> {
+            switch (modifier.getOperation()) {
+                case MULTIPLY_BASE -> multipliedBase += modifier.getAmount();
+                case MULTIPLY_TOTAL -> multipliedTotal *= 1.0 + modifier.getAmount();
+                case ADDITION -> {
                 }
             }
         }
         return (1.0 + multipliedBase) * multipliedTotal;
+    }
+
+    private static boolean isOurs(AttributeModifier modifier) {
+        return ADJUSTMENT_ID.equals(modifier.getId());
     }
 }

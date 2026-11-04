@@ -1,7 +1,7 @@
 plugins {
     id 'java-library'
     id 'maven-publish'
-    id 'net.neoforged.moddev' version '2.0.148'
+    id 'net.neoforged.moddev.legacyforge' version '2.0.148'
     id 'idea'
 }
 
@@ -19,39 +19,41 @@ def buildNumber = mod_build_number.toInteger() + (isAlphaBuild ? 1 : 0)
 def baseVersion = "${mod_version}-${minecraft_version}"
 version = "${baseVersion}+build.${buildNumber}"
 
-sourceSets.main.resources {
-    srcDir('src/generated/resources')
-    exclude("**/*.bbmodel") // BlockBench 工程文件
-    exclude("**/.cache/**") // datagen 缓存
-}
+// Forge 1.20.1 使用 Java 17
+java.toolchain.languageVersion = JavaLanguageVersion.of(17)
 
 base {
     archivesName = mod_id
 }
 
-java.toolchain.languageVersion = JavaLanguageVersion.of(21)
+repositories {
+    mavenLocal()
+    // 附件能力：固定使用自家 maven
+    maven {
+        name = 'MafuyuNexus'
+        url = 'https://maven.sighs.cc/repository/maven-public/'
+    }
+}
 
-neoForge {
-    version = project.neo_version
+legacyForge {
+    version = "${minecraft_version}-${forge_version}"
 
     parchment {
-        mappingsVersion = project.parchment_mappings_version
         minecraftVersion = project.parchment_minecraft_version
+        mappingsVersion = project.parchment_mappings_version
     }
-
-    // accessTransformers = project.files('src/main/resources/META-INF/accesstransformer.cfg')
 
     runs {
         client1 {
             client()
-            systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
+            systemProperty 'forge.enabledGameTestNamespaces', project.mod_id
             gameDirectory = project.file('./run/client1')
             programArguments.addAll("--username", "player1")
         }
 
         client2 {
             client()
-            systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
+            systemProperty 'forge.enabledGameTestNamespaces', project.mod_id
             gameDirectory = project.file('./run/client2')
             programArguments.addAll("--username", "player2")
         }
@@ -59,12 +61,12 @@ neoForge {
         server {
             server()
             programArgument '--nogui'
-            systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
+            systemProperty 'forge.enabledGameTestNamespaces', project.mod_id
         }
 
         gameTestServer {
             type = "gameTestServer"
-            systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
+            systemProperty 'forge.enabledGameTestNamespaces', project.mod_id
         }
 
         data {
@@ -85,35 +87,47 @@ neoForge {
     }
 }
 
+sourceSets.main.resources {
+    srcDir('src/generated/resources')
+    exclude("**/*.bbmodel")
+    exclude("**/.cache/**")
+}
+
 configurations {
     runtimeClasspath.extendsFrom localRuntime
 }
 
-var generateModMetadata = tasks.register("generateModMetadata", ProcessResources) {
-    var replaceProperties = [
-            minecraft_version      : minecraft_version,
-            minecraft_version_range: minecraft_version_range,
-            neo_version            : neo_version,
-            neo_version_range      : neo_version_range,
-            loader_version_range   : loader_version_range,
-            mod_id                 : mod_id,
-            mod_name               : mod_name,
-            mod_license            : mod_license,
-            // 包内版本号恒带 +build.<编号>，用 gradle 的 version 而非 mod_version
-            mod_version            : version,
-            mod_authors            : mod_authors,
-            mod_description        : mod_description,
-            mod_credits            : mod_credits,
-            mod_url                : mod_url,
-    ]
-    inputs.properties replaceProperties
-    expand replaceProperties
-    from "src/main/templates"
-    into "build/generated/sources/modMetadata"
+dependencies {
+    // Forge 1.20.1 没有 AttachmentType，用自家 forgeattachment 提供玩家附件持久化
+    modImplementation "io.zershyan:forgeattachment:${forgeattachment_version}"
 }
 
-sourceSets.main.resources.srcDir generateModMetadata
-neoForge.ideSyncTask generateModMetadata
+// mods.toml 占位符展开（Forge 的元数据直接在 resources 下，不走 templates 目录）
+var modMetadataProps = [
+        minecraft_version      : minecraft_version,
+        minecraft_version_range: minecraft_version_range,
+        forge_version          : forge_version,
+        forge_version_range    : forge_version_range,
+        loader_version_range   : loader_version_range,
+        mod_id                 : mod_id,
+        mod_name               : mod_name,
+        mod_license            : mod_license,
+        // 包内版本号恒带 +build.<编号>，用 gradle 的 version 而非 mod_version
+        mod_version            : version,
+        mod_authors            : mod_authors,
+        mod_description        : mod_description,
+        mod_credits            : mod_credits,
+        mod_url                : mod_url,
+]
+
+tasks.named('processResources', ProcessResources).configure {
+    inputs.properties modMetadataProps
+    filteringCharset = 'UTF-8'
+    filesMatching(['META-INF/mods.toml', 'pack.mcmeta']) {
+        expand modMetadataProps
+    }
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
 
 publishing {
     publications {
@@ -126,10 +140,6 @@ publishing {
             url "file://${project.projectDir}/repo"
         }
     }
-}
-
-tasks.withType(JavaCompile).configureEach {
-    options.encoding = 'UTF-8'
 }
 
 // 打包收尾：最终包改名到 libs 顶层，原包（带编号）挪进 libs/origin
@@ -185,6 +195,18 @@ tasks.register('buildAlpha') {
                 'UTF-8')
         logger.lifecycle("mod_build_number synced: ${buildNumberBefore} -> ${buildNumberUsed}")
     }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}
+
+tasks.withType(Test).configureEach {
+    systemProperty 'file.encoding', 'UTF-8'
+}
+
+tasks.withType(JavaExec).configureEach {
+    systemProperty 'file.encoding', 'UTF-8'
 }
 
 idea {

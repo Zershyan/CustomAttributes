@@ -5,36 +5,64 @@ import io.zershyan.customattributes.registry.packet.AttributeListPacket;
 import io.zershyan.customattributes.registry.packet.AttributeUpdatePacket;
 import io.zershyan.customattributes.registry.packet.ModifyAttributePacket;
 import io.zershyan.customattributes.registry.packet.SubscriptionPacket;
-import net.neoforged.bus.api.IEventBus;
-import net.neoforged.fml.ModContainer;
-import net.neoforged.fml.ModList;
-import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
-import net.neoforged.neoforge.network.registration.PayloadRegistrar;
-import net.neoforged.neoforgespi.language.IModInfo;
-import org.jetbrains.annotations.NotNull;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraftforge.fml.ModList;
+import net.minecraftforge.network.NetworkDirection;
+import net.minecraftforge.network.NetworkRegistry;
+import net.minecraftforge.network.simple.SimpleChannel;
 
+/**
+ * 网络注册入口。
+ *
+ * <p>Forge 1.20.1 使用 {@link SimpleChannel}，没有 NeoForge 的 PayloadRegistrar。
+ */
 public final class CustomAttributesPackets {
-    /** 协议版本取本 mod 版本（含构建数），不硬编码；两端不一致时 NeoForge 拒绝连接 */
-    @NotNull
+    /** 协议版本取本 mod 版本（含构建数），不硬编码；两端不一致时拒绝连接 */
     private static final String PROTOCOL_VERSION = ModList.get()
             .getModContainerById(CustomAttributes.MODID)
-            .map(ModContainer::getModInfo)
-            .map(IModInfo::getVersion)
-            .map(Object::toString)
+            .map(container -> container.getModInfo().getVersion().toString())
             .orElse("unknown");
+
+    public static final SimpleChannel INSTANCE = NetworkRegistry.newSimpleChannel(
+            new ResourceLocation(CustomAttributes.MODID, CustomAttributes.MODID),
+            () -> PROTOCOL_VERSION,
+            PROTOCOL_VERSION::equals,
+            PROTOCOL_VERSION::equals
+    );
+
+    private static int nextId;
 
     private CustomAttributesPackets() {
     }
 
-    public static void doRegister(IEventBus modEventBus) {
-        modEventBus.addListener(CustomAttributesPackets::register);
+    private static int id() {
+        return nextId++;
     }
 
-    private static void register(RegisterPayloadHandlersEvent event) {
-        PayloadRegistrar registrar = event.registrar(PROTOCOL_VERSION);
-        registrar.playToServer(SubscriptionPacket.TYPE, SubscriptionPacket.STREAM_CODEC, SubscriptionPacket::handle);
-        registrar.playToServer(ModifyAttributePacket.TYPE, ModifyAttributePacket.STREAM_CODEC, ModifyAttributePacket::handle);
-        registrar.playToClient(AttributeListPacket.TYPE, AttributeListPacket.STREAM_CODEC, AttributeListPacket::handle);
-        registrar.playToClient(AttributeUpdatePacket.TYPE, AttributeUpdatePacket.STREAM_CODEC, AttributeUpdatePacket::handle);
+    /** SimpleChannel 的注册不依赖事件总线，故无需入参 */
+    public static void doRegister() {
+        INSTANCE.messageBuilder(SubscriptionPacket.class, id(), NetworkDirection.PLAY_TO_SERVER)
+                .decoder(SubscriptionPacket::new)
+                .encoder(SubscriptionPacket::encode)
+                .consumerMainThread(SubscriptionPacket::handle)
+                .add();
+
+        INSTANCE.messageBuilder(ModifyAttributePacket.class, id(), NetworkDirection.PLAY_TO_SERVER)
+                .decoder(ModifyAttributePacket::new)
+                .encoder(ModifyAttributePacket::encode)
+                .consumerMainThread(ModifyAttributePacket::handle)
+                .add();
+
+        INSTANCE.messageBuilder(AttributeListPacket.class, id(), NetworkDirection.PLAY_TO_CLIENT)
+                .decoder(AttributeListPacket::new)
+                .encoder(AttributeListPacket::encode)
+                .consumerMainThread(AttributeListPacket::handle)
+                .add();
+
+        INSTANCE.messageBuilder(AttributeUpdatePacket.class, id(), NetworkDirection.PLAY_TO_CLIENT)
+                .decoder(AttributeUpdatePacket::new)
+                .encoder(AttributeUpdatePacket::encode)
+                .consumerMainThread(AttributeUpdatePacket::handle)
+                .add();
     }
 }

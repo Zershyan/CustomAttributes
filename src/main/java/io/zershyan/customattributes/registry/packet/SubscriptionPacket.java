@@ -1,36 +1,35 @@
 package io.zershyan.customattributes.registry.packet;
 
-import io.netty.buffer.ByteBuf;
-import io.zershyan.customattributes.CustomAttributes;
 import io.zershyan.customattributes.attribute.AttributeManager;
-import net.minecraft.network.codec.ByteBufCodecs;
-import net.minecraft.network.codec.StreamCodec;
-import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.server.level.ServerPlayer;
-import net.neoforged.neoforge.network.handling.IPayloadContext;
-import org.jetbrains.annotations.NotNull;
+import net.minecraftforge.network.NetworkEvent;
+
+import java.util.function.Supplier;
 
 /** 客户端 → 服务端：订阅（同时索取列表）或退订。 */
-public record SubscriptionPacket(boolean subscribe) implements CustomPacketPayload {
-    public static final CustomPacketPayload.Type<SubscriptionPacket> TYPE =
-            new CustomPacketPayload.Type<>(CustomAttributes.id("subscription"));
+public class SubscriptionPacket {
+    private final boolean subscribe;
 
-    public static final StreamCodec<ByteBuf, SubscriptionPacket> STREAM_CODEC =
-            ByteBufCodecs.BOOL.map(SubscriptionPacket::new, SubscriptionPacket::subscribe);
-
-    @Override
-    public @NotNull Type<? extends CustomPacketPayload> type() {
-        return TYPE;
+    public SubscriptionPacket(boolean subscribe) {
+        this.subscribe = subscribe;
     }
 
-    public void handle(IPayloadContext context) {
-        context.enqueueWork(() -> {
-            if (!(context.player() instanceof ServerPlayer player)) return;
-            if (subscribe) {
-                AttributeManager.open(player);
-            } else {
-                AttributeManager.close(player);
-            }
-        });
+    public SubscriptionPacket(FriendlyByteBuf buf) {
+        this.subscribe = buf.readBoolean();
+    }
+
+    public void encode(FriendlyByteBuf buf) {
+        buf.writeBoolean(subscribe);
+    }
+
+    public void handle(Supplier<NetworkEvent.Context> supplier) {
+        ServerPlayer player = supplier.get().getSender();
+        if (player == null) return;
+        if (subscribe) {
+            AttributeManager.open(player);
+        } else {
+            AttributeManager.close(player);
+        }
     }
 }

@@ -39,7 +39,7 @@ public class AttributeSlider extends AbstractSliderButton {
         return rangeMax;
     }
 
-    /** 该属性的基础值是否已被改离默认值。 */
+    /** 该属性的最终值是否被玩家设定过。 */
     public boolean isModified() {
         return modified;
     }
@@ -97,9 +97,10 @@ public class AttributeSlider extends AbstractSliderButton {
 
     /** 松手即提交，拖动过程只改本地显示。 */
     @Override
-    public void onRelease(double mouseX, double mouseY) {
-        super.onRelease(mouseX, mouseY);
+    public boolean mouseReleased(double mouseX, double mouseY, int button) {
+        boolean handled = super.mouseReleased(mouseX, mouseY, button);
         flush();
+        return handled;
     }
 
     private void apply(AttributeEntry entry) {

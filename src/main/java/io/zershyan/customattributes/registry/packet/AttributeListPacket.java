@@ -1,31 +1,42 @@
 package io.zershyan.customattributes.registry.packet;
 
-import io.netty.buffer.ByteBuf;
-import io.zershyan.customattributes.CustomAttributes;
 import io.zershyan.customattributes.attribute.AttributeEntry;
 import io.zershyan.customattributes.client.ClientAttributeData;
-import net.minecraft.network.codec.StreamCodec;
-import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
-import net.neoforged.neoforge.network.handling.IPayloadContext;
-import org.jetbrains.annotations.NotNull;
+import net.minecraft.network.FriendlyByteBuf;
+import net.minecraftforge.api.distmarker.Dist;
+import net.minecraftforge.fml.DistExecutor;
+import net.minecraftforge.network.NetworkEvent;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Supplier;
 
 /** 服务端 → 客户端：完整属性列表，收到即打开界面。 */
-public record AttributeListPacket(List<AttributeEntry> entries) implements CustomPacketPayload {
-    public static final CustomPacketPayload.Type<AttributeListPacket> TYPE =
-            new CustomPacketPayload.Type<>(CustomAttributes.id("attribute_list"));
+public class AttributeListPacket {
+    private final List<AttributeEntry> entries;
 
-    public static final StreamCodec<ByteBuf, AttributeListPacket> STREAM_CODEC =
-            AttributeEntry.LIST_STREAM_CODEC.map(AttributeListPacket::new, AttributeListPacket::entries);
-
-    @Override
-    public @NotNull Type<? extends CustomPacketPayload> type() {
-        return TYPE;
+    public AttributeListPacket(List<AttributeEntry> entries) {
+        this.entries = entries;
     }
 
-    /** 只在客户端侧执行；客户端只做展示。 */
-    public void handle(IPayloadContext context) {
-        context.enqueueWork(() -> ClientAttributeData.open(entries));
+    public AttributeListPacket(FriendlyByteBuf buf) {
+        int size = buf.readVarInt();
+        List<AttributeEntry> list = new ArrayList<>(size);
+        for (int i = 0; i < size; i++) {
+            list.add(AttributeEntry.read(buf));
+        }
+        this.entries = list;
+    }
+
+    public void encode(FriendlyByteBuf buf) {
+        buf.writeVarInt(entries.size());
+        for (AttributeEntry entry : entries) {
+            entry.write(buf);
+        }
+    }
+
+    public void handle(Supplier<NetworkEvent.Context> supplier) {
+        // 只在客户端侧执行；客户端只做展示
+        DistExecutor.unsafeRunWhenOn(Dist.CLIENT, () -> () -> ClientAttributeData.open(entries));
     }
 }

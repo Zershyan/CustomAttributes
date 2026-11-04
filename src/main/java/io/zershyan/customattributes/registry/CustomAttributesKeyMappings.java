@@ -3,10 +3,10 @@ package io.zershyan.customattributes.registry;
 import com.mojang.blaze3d.platform.InputConstants;
 import io.zershyan.customattributes.datagen.lang.CustomAttributesKeyLang;
 import net.minecraft.client.KeyMapping;
-import net.neoforged.bus.api.IEventBus;
-import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
-import net.neoforged.neoforge.client.settings.KeyConflictContext;
-import net.neoforged.neoforge.common.util.Lazy;
+import net.minecraftforge.client.event.RegisterKeyMappingsEvent;
+import net.minecraftforge.client.settings.KeyConflictContext;
+import net.minecraftforge.common.util.Lazy;
+import net.minecraftforge.eventbus.api.IEventBus;
 import org.lwjgl.glfw.GLFW;
 
 import java.util.ArrayList;
@@ -29,8 +29,8 @@ public final class CustomAttributesKeyMappings {
         return mapping;
     }
 
-    public static void doRegister(IEventBus modEventBus) {
-        modEventBus.addListener(CustomAttributesKeyMappings::register);
+    public static void doRegister(IEventBus modBus) {
+        modBus.addListener(CustomAttributesKeyMappings::register);
     }
 
     private static void register(RegisterKeyMappingsEvent event) {

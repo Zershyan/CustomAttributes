@@ -6,11 +6,12 @@ import io.zershyan.customattributes.registry.CustomAttributesConfigs;
 import io.zershyan.customattributes.registry.CustomAttributesKeyMappings;
 import io.zershyan.customattributes.registry.CustomAttributesPackets;
 import net.minecraft.resources.ResourceLocation;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.bus.api.IEventBus;
-import net.neoforged.fml.ModContainer;
-import net.neoforged.fml.common.Mod;
-import net.neoforged.neoforge.common.NeoForge;
+import net.minecraftforge.api.distmarker.Dist;
+import net.minecraftforge.common.MinecraftForge;
+import net.minecraftforge.eventbus.api.IEventBus;
+import net.minecraftforge.fml.DistExecutor;
+import net.minecraftforge.fml.common.Mod;
+import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -19,18 +20,20 @@ public class CustomAttributes {
     public static final String MODID = "customattributes";
     public static final Logger LOGGER = LoggerFactory.getLogger(CustomAttributes.class);
 
-    public CustomAttributes(IEventBus modEventBus, Dist dist, ModContainer modContainer) {
-        CustomAttributesPackets.doRegister(modEventBus);
-        CustomAttributesAttachments.doRegister(modEventBus);
-        CustomAttributesConfigs.doRegister(modContainer);
-        CustomAttributesCommands.doRegister(NeoForge.EVENT_BUS);
+    public CustomAttributes() {
+        IEventBus modBus = FMLJavaModLoadingContext.get().getModEventBus();
+        IEventBus forgeBus = MinecraftForge.EVENT_BUS;
 
-        if (dist.isClient()) {
-            CustomAttributesKeyMappings.doRegister(modEventBus);
-        }
+        CustomAttributesAttachments.doRegister(modBus);
+        CustomAttributesPackets.doRegister();
+        CustomAttributesConfigs.doRegister();
+        CustomAttributesCommands.doRegister(forgeBus);
+
+        // Forge 1.20.1 没有 Dist 构造器参数，客户端注册必须经 DistExecutor 隔离
+        DistExecutor.unsafeRunWhenOn(Dist.CLIENT, () -> () -> CustomAttributesKeyMappings.doRegister(modBus));
     }
 
     public static ResourceLocation id(String path) {
-        return ResourceLocation.fromNamespaceAndPath(MODID, path);
+        return new ResourceLocation(MODID, path);
     }
 }

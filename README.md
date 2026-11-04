@@ -1,14 +1,15 @@
 # Custom Attributes
 
-NeoForge 1.21.1 模组：在游戏内查看并调整**自己的**属性，可调区间由服务端用范围表达式规定。
+Forge 1.20.1 模组：在游戏内查看并调整**自己的**属性，可调区间由服务端用范围表达式规定。
 
 典型用途：身上叠了一堆增益，速度太快晕得难受、跳跃太高影响跑酷——不用拆装备，直接在区间内把数值调低。
 
 ## 环境
 
-- Minecraft 1.21.1
-- NeoForge 21.1.233+
-- Java 21
+- Minecraft 1.20.1
+- Forge 47.3.4+
+- Java 17
+- **必须同时安装 [forgeattachment](https://github.com/Zershyan/forgeattachment)**（本模组用它保存玩家自己的调整记录，未发布到 MC百科 / CurseForge）
 
 ## 打开界面
 
@@ -25,7 +26,7 @@ NeoForge 1.21.1 模组：在游戏内查看并调整**自己的**属性，可调
 
 ## 服务端配置
 
-路径：`config/customattributes-server.toml`（实例级，不随存档变化）
+路径：`<存档>/serverconfig/customattributes-server.toml`（每个世界一份）
 
 ```toml
 [general]
@@ -37,7 +38,6 @@ NeoForge 1.21.1 模组：在游戏内查看并调整**自己的**属性，可调
 		"minecraft:generic.step_height",
 		"minecraft:generic.safe_fall_distance",
 		"minecraft:player.sneaking_speed",
-		"neoforge:swim_speed",
 		"minecraft:generic.movement_efficiency",
 		"minecraft:generic.water_movement_efficiency",
 		"minecraft:generic.attack_damage",
@@ -66,7 +66,7 @@ NeoForge 1.21.1 模组：在游戏内查看并调整**自己的**属性，可调
 
 筛选顺序：先按 `list_mode` 决定哪个属性允许出现在界面上 → 再用 `ranges.entries` 或 `default_range` 算出它的可调区间。写错的行会打日志并忽略，不影响其它行。
 
-**默认是白名单模式**，并且预置了 20 个常见属性（移动与手感 8 个、战斗 7 个、交互与采集 5 个）——它们的共同点是"调低只会更难受，不会让人卡死"。想放开别的属性，把 ID 加进 `whitelist`；想先看有哪些 ID，可以临时把 `list_mode` 改成 `"BLACKLIST"` 打开界面，鼠标悬停属性名会显示 ID，抄完再改回 `"WHITELIST"`。把 `whitelist` 清空则等于全部不放行。
+**默认是白名单模式**，并且预置了 19 个常见属性（移动与手感 7 个、战斗 7 个、交互与采集 5 个）——它们的共同点是"调低只会更难受，不会让人卡死"。想放开别的属性，把 ID 加进 `whitelist`；想先看有哪些 ID，可以临时把 `list_mode` 改成 `"BLACKLIST"` 打开界面，鼠标悬停属性名会显示 ID，抄完再改回 `"WHITELIST"`。把 `whitelist` 清空则等于全部不放行。
 
 ## 范围表达式
 

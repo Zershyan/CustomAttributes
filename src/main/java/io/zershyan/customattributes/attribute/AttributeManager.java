@@ -1,9 +1,11 @@
 package io.zershyan.customattributes.attribute;
 
 import io.zershyan.customattributes.registry.CustomAttributesAttachments;
-import io.zershyan.customattributes.registry.config.ServerConfig;import io.zershyan.customattributes.registry.packet.AttributeListPacket;
+import io.zershyan.customattributes.registry.CustomAttributesPackets;
+import io.zershyan.customattributes.registry.config.ServerConfig;
+import io.zershyan.customattributes.registry.packet.AttributeListPacket;
 import io.zershyan.customattributes.registry.packet.AttributeUpdatePacket;
-import net.minecraft.core.Holder;
+import io.zershyan.forgeattachment.attachment.IAttachmentHolder;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
@@ -15,8 +17,9 @@ import net.minecraft.world.entity.ai.attributes.AttributeInstance;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
 import net.minecraft.world.entity.ai.attributes.DefaultAttributes;
 import net.minecraft.world.entity.ai.attributes.RangedAttribute;
-import net.neoforged.neoforge.network.PacketDistributor;
+import net.minecraftforge.network.PacketDistributor;
 
+import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -39,19 +42,23 @@ public final class AttributeManager {
 
     /** 打开界面：订阅该玩家并下发完整列表。 */
     public static void open(ServerPlayer player) {
+        Map<ResourceLocation, Double> targets = targetsOf(player);
+        if (targets == null) {
+            return;
+        }
         int now = tickOf(player);
         Watch existing = WATCHES.get(player.getUUID());
         if (existing != null && now - existing.lastOpenTick < OPEN_COOLDOWN_TICKS) {
             return;
         }
         RangeRules.reload();
-        List<AttributeEntry> entries = buildEntries(player);
+        List<AttributeEntry> entries = buildEntries(player, targets);
         Watch watch = new Watch(now);
         for (AttributeEntry entry : entries) {
             watch.entries.put(entry.id(), entry);
         }
         WATCHES.put(player.getUUID(), watch);
-        PacketDistributor.sendToPlayer(player, new AttributeListPacket(entries));
+        sendTo(player, new AttributeListPacket(entries));
     }
 
     public static void close(ServerPlayer player) {
@@ -70,7 +77,7 @@ public final class AttributeManager {
             if (!WATCHES.isEmpty()) {
                 for (ServerPlayer player : playerList.getPlayers()) {
                     if (WATCHES.containsKey(player.getUUID())) {
-                        PacketDistributor.sendToPlayer(player, new AttributeListPacket(List.of()));
+                        sendTo(player, new AttributeListPacket(List.of()));
                     }
                 }
                 WATCHES.clear();
@@ -93,12 +100,16 @@ public final class AttributeManager {
 
     /** 结构变了就整表重发：客户端据此增删行，比逐条增量简单且不会残留。 */
     private static void resync(ServerPlayer player, Watch watch) {
+        Map<ResourceLocation, Double> targets = targetsOf(player);
+        if (targets == null) {
+            return;
+        }
         watch.entries.clear();
-        List<AttributeEntry> entries = buildEntries(player);
+        List<AttributeEntry> entries = buildEntries(player, targets);
         for (AttributeEntry entry : entries) {
             watch.entries.put(entry.id(), entry);
         }
-        PacketDistributor.sendToPlayer(player, new AttributeListPacket(entries));
+        sendTo(player, new AttributeListPacket(entries));
     }
 
     /**
@@ -107,10 +118,13 @@ public final class AttributeManager {
      */
     private static void enforcePlayer(ServerPlayer player, Watch watch) {
         Map<ResourceLocation, Double> targets = targetsOf(player);
+        if (targets == null) {
+            return;
+        }
         dropUnavailable(player, targets);
 
         for (Target target : targets()) {
-            AttributeInstance instance = player.getAttribute(target.holder);
+            AttributeInstance instance = player.getAttribute(target.attribute);
             if (instance == null) {
                 forget(watch, target.id);
                 continue;
@@ -146,7 +160,7 @@ public final class AttributeManager {
                 continue;
             }
             watch.entries.put(target.id, candidate);
-            PacketDistributor.sendToPlayer(player, new AttributeUpdatePacket(candidate));
+            sendTo(player, new AttributeUpdatePacket(candidate));
         }
     }
 
@@ -175,13 +189,14 @@ public final class AttributeManager {
             if (RangeRules.isAllowed(id)) {
                 return false;
             }
-            BuiltInRegistries.ATTRIBUTE.getHolder(id)
-                    .map(player::getAttribute)
-                    .ifPresent(AttributeAdjustments::clear);
+            Attribute attribute = BuiltInRegistries.ATTRIBUTE.get(id);
+            AttributeInstance instance = attribute == null ? null : player.getAttribute(attribute);
+            if (instance != null) {
+                AttributeAdjustments.clear(instance);
+            }
             return true;
         });
     }
-
 
     /** 数值、区间或"是否已被改动"任一变化都要下发，否则界面会停在旧状态。 */
     private static boolean differs(AttributeEntry last, AttributeEntry current) {
@@ -191,14 +206,12 @@ public final class AttributeManager {
                 || last.modified() != current.modified();
     }
 
-
     /** 属性从界面上消失时同步掉订阅快照里的条目，并请求整表重发。 */
     private static void forget(Watch watch, ResourceLocation id) {
         if (watch != null && watch.entries.remove(id) != null) {
             watch.resync = true;
         }
     }
-
 
     /**
      * 处理玩家提交的修改或重置，只有打开过界面的玩家才会被受理。
@@ -212,18 +225,21 @@ public final class AttributeManager {
         if (watch == null || !watch.acceptModification(tickOf(player))) {
             return;
         }
-        Holder.Reference<Attribute> holder = BuiltInRegistries.ATTRIBUTE.getHolder(id).orElse(null);
-        if (holder == null) {
+        Attribute attribute = BuiltInRegistries.ATTRIBUTE.get(id);
+        if (attribute == null) {
             return;
         }
-        AttributeInstance instance = player.getAttribute(holder);
+        AttributeInstance instance = player.getAttribute(attribute);
         if (instance == null) {
             return;
         }
-        RangeRules.reload();
-        double defaultValue = defaultValueOf(holder);
-        ValueRange range = currentRange(instance, id, defaultValue);
         Map<ResourceLocation, Double> targets = targetsOf(player);
+        if (targets == null) {
+            return;
+        }
+        RangeRules.reload();
+        double defaultValue = defaultValueOf(attribute);
+        ValueRange range = currentRange(instance, id, defaultValue);
         if (range != null) {
             if (reset) {
                 targets.remove(id);
@@ -235,10 +251,11 @@ public final class AttributeManager {
             }
         }
         // 无论是否生效都回报真实状态，避免界面停在服务端没有接受的值上
-        syncNow(player, watch, id, instance, defaultValue);
+        syncNow(player, watch, id, instance, defaultValue, targets);
     }
 
-    private static void syncNow(ServerPlayer player, Watch watch, ResourceLocation id, AttributeInstance instance, double defaultValue) {
+    private static void syncNow(ServerPlayer player, Watch watch, ResourceLocation id,
+                                AttributeInstance instance, double defaultValue, Map<ResourceLocation, Double> targets) {
         if (!watch.entries.containsKey(id)) {
             return;
         }
@@ -246,20 +263,18 @@ public final class AttributeManager {
         if (range == null) {
             return;
         }
-        AttributeEntry entry = new AttributeEntry(id, instance.getValue(), range.min(), range.max(),
-                targetsOf(player).containsKey(id));
+        AttributeEntry entry = new AttributeEntry(id, instance.getValue(), range.min(), range.max(), targets.containsKey(id));
         watch.entries.put(id, entry);
-        PacketDistributor.sendToPlayer(player, new AttributeUpdatePacket(entry));
+        sendTo(player, new AttributeUpdatePacket(entry));
     }
 
-    private static List<AttributeEntry> buildEntries(ServerPlayer player) {
+    private static List<AttributeEntry> buildEntries(ServerPlayer player, Map<ResourceLocation, Double> targets) {
         if (!ServerConfig.isEnabled()) {
             return List.of();
         }
         List<AttributeEntry> entries = new ArrayList<>();
-        Map<ResourceLocation, Double> targets = targetsOf(player);
         for (Target target : targets()) {
-            AttributeInstance instance = player.getAttribute(target.holder);
+            AttributeInstance instance = player.getAttribute(target.attribute);
             if (instance == null) {
                 continue;
             }
@@ -277,8 +292,13 @@ public final class AttributeManager {
         return RangeRules.rangeOf(instance, id, defaultValue, AttributeAdjustments.unadjustedValue(instance)).orElse(null);
     }
 
+    /** 玩家存档里的目标值；拿不到附件时返回 null，调用方直接放弃本次处理。 */
+    @Nullable
     private static Map<ResourceLocation, Double> targetsOf(ServerPlayer player) {
-        return player.getData(CustomAttributesAttachments.TARGETS);
+        if (player instanceof IAttachmentHolder holder) {
+            return holder.getData(CustomAttributesAttachments.TARGETS);
+        }
+        return null;
     }
 
     private static List<Target> targets() {
@@ -286,30 +306,31 @@ public final class AttributeManager {
         if (cached == null) {
             AttributeSupplier supplier = DefaultAttributes.getSupplier(EntityType.PLAYER);
             List<Target> list = new ArrayList<>();
-            for (Holder.Reference<Attribute> holder : BuiltInRegistries.ATTRIBUTE.holders().toList()) {
-                ResourceLocation id = holder.unwrapKey().map(key -> key.location()).orElse(null);
-                if (id == null || !(holder.value() instanceof RangedAttribute)) {
+            for (ResourceLocation id : BuiltInRegistries.ATTRIBUTE.keySet()) {
+                Attribute attribute = BuiltInRegistries.ATTRIBUTE.get(id);
+                if (!(attribute instanceof RangedAttribute)) {
                     continue;
                 }
-                if (supplier != null && !supplier.hasAttribute(holder)) {
+                if (supplier != null && !supplier.hasAttribute(attribute)) {
                     continue;
                 }
-                list.add(new Target(id, holder, defaultValueOf(supplier, holder)));
+                list.add(new Target(id, attribute, defaultValueOf(attribute)));
             }
             cached = targets = List.copyOf(list);
         }
         return cached;
     }
 
-    private static double defaultValueOf(Holder<Attribute> holder) {
-        return defaultValueOf(DefaultAttributes.getSupplier(EntityType.PLAYER), holder);
+    private static double defaultValueOf(Attribute attribute) {
+        AttributeSupplier supplier = DefaultAttributes.getSupplier(EntityType.PLAYER);
+        if (supplier != null && supplier.hasAttribute(attribute)) {
+            return supplier.getValue(attribute);
+        }
+        return attribute instanceof RangedAttribute ranged ? ranged.getDefaultValue() : 0.0;
     }
 
-    private static double defaultValueOf(AttributeSupplier supplier, Holder<Attribute> holder) {
-        if (supplier != null && supplier.hasAttribute(holder)) {
-            return supplier.getValue(holder);
-        }
-        return holder.value() instanceof RangedAttribute ranged ? ranged.getDefaultValue() : 0.0;
+    private static void sendTo(ServerPlayer player, Object packet) {
+        CustomAttributesPackets.INSTANCE.send(PacketDistributor.PLAYER.with(() -> player), packet);
     }
 
     private static int tickOf(ServerPlayer player) {
@@ -317,8 +338,8 @@ public final class AttributeManager {
         return server == null ? 0 : server.getTickCount();
     }
 
-    /** 一个玩家属性：ID、Holder 与默认基础值一次算好，逐 tick 只做字段访问。 */
-    private record Target(ResourceLocation id, Holder.Reference<Attribute> holder, double defaultValue) {
+    /** 一个玩家属性：ID、属性对象与默认基础值一次算好，逐 tick 只做字段访问。 */
+    private record Target(ResourceLocation id, Attribute attribute, double defaultValue) {
     }
 
     /** 订阅快照：记录上次下发的完整条目，数值与区间任一变化都要重新推送。 */

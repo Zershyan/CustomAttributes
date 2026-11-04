@@ -1,11 +1,7 @@
 package io.zershyan.customattributes.attribute;
 
-import io.netty.buffer.ByteBuf;
-import net.minecraft.network.codec.ByteBufCodecs;
-import net.minecraft.network.codec.StreamCodec;
+import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.resources.ResourceLocation;
-
-import java.util.List;
 
 /**
  * 下发给客户端的一条属性信息。
@@ -13,19 +9,19 @@ import java.util.List;
  * @param value    服务端此刻的最终值
  * @param min      可调下界
  * @param max      可调上界
- * @param modified 基础值是否已被改离默认值，界面据此显示"已调整"并启用重置
+ * @param modified 玩家是否给这个属性设定过目标值，界面据此显示"已调整"并启用重置
  */
 public record AttributeEntry(ResourceLocation id, double value, double min, double max, boolean modified) {
 
-    public static final StreamCodec<ByteBuf, AttributeEntry> STREAM_CODEC = StreamCodec.composite(
-            ResourceLocation.STREAM_CODEC, AttributeEntry::id,
-            ByteBufCodecs.DOUBLE, AttributeEntry::value,
-            ByteBufCodecs.DOUBLE, AttributeEntry::min,
-            ByteBufCodecs.DOUBLE, AttributeEntry::max,
-            ByteBufCodecs.BOOL, AttributeEntry::modified,
-            AttributeEntry::new
-    );
+    public void write(FriendlyByteBuf buf) {
+        buf.writeResourceLocation(id);
+        buf.writeDouble(value);
+        buf.writeDouble(min);
+        buf.writeDouble(max);
+        buf.writeBoolean(modified);
+    }
 
-    public static final StreamCodec<ByteBuf, List<AttributeEntry>> LIST_STREAM_CODEC =
-            STREAM_CODEC.apply(ByteBufCodecs.list());
+    public static AttributeEntry read(FriendlyByteBuf buf) {
+        return new AttributeEntry(buf.readResourceLocation(), buf.readDouble(), buf.readDouble(), buf.readDouble(), buf.readBoolean());
+    }
 }

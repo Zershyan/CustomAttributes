@@ -1,6 +1,6 @@
 package io.zershyan.customattributes.registry.config;
 
-import net.neoforged.neoforge.common.ModConfigSpec;
+import net.minecraftforge.common.ForgeConfigSpec;
 
 import java.util.List;
 
@@ -24,7 +24,6 @@ public final class ServerConfig {
             "minecraft:generic.step_height",
             "minecraft:generic.safe_fall_distance",
             "minecraft:player.sneaking_speed",
-            "neoforge:swim_speed",
             "minecraft:generic.movement_efficiency",
             "minecraft:generic.water_movement_efficiency",
             // 战斗
@@ -43,16 +42,16 @@ public final class ServerConfig {
             "minecraft:player.mining_efficiency"
     );
 
-    private static final ModConfigSpec.Builder BUILDER = new ModConfigSpec.Builder();
-    public static final ModConfigSpec SPEC;
+    private static final ForgeConfigSpec.Builder BUILDER = new ForgeConfigSpec.Builder();
+    public static final ForgeConfigSpec SPEC;
 
-    public static final ModConfigSpec.BooleanValue ENABLED;
-    public static final ModConfigSpec.EnumValue<AttributeListMode> LIST_MODE;
-    public static final ModConfigSpec.ConfigValue<List<? extends String>> WHITELIST;
-    public static final ModConfigSpec.ConfigValue<List<? extends String>> BLACKLIST;
-    public static final ModConfigSpec.ConfigValue<String> DEFAULT_RANGE;
-    public static final ModConfigSpec.IntValue SYNC_INTERVAL_TICKS;
-    public static final ModConfigSpec.ConfigValue<List<? extends String>> RANGE_OVERRIDES;
+    public static final ForgeConfigSpec.BooleanValue ENABLED;
+    public static final ForgeConfigSpec.EnumValue<AttributeListMode> LIST_MODE;
+    public static final ForgeConfigSpec.ConfigValue<List<? extends String>> WHITELIST;
+    public static final ForgeConfigSpec.ConfigValue<List<? extends String>> BLACKLIST;
+    public static final ForgeConfigSpec.ConfigValue<String> DEFAULT_RANGE;
+    public static final ForgeConfigSpec.IntValue SYNC_INTERVAL_TICKS;
+    public static final ForgeConfigSpec.ConfigValue<List<? extends String>> RANGE_OVERRIDES;
 
     static {
         // 配置键与语言条目共用同一个 name，避免两处手写字符串写岔
@@ -65,10 +64,10 @@ public final class ServerConfig {
                 .defineEnum(ListMode.name(), AttributeListMode.WHITELIST);
         WHITELIST = BUILDER.translation(Whitelist.key())
                 .comment("白名单模式下只有这些属性显示且可调，其余一律不可调；清空列表即什么都不放开")
-                .defineListAllowEmpty(Whitelist.name(), DEFAULT_WHITELIST, () -> "", o -> o instanceof String);
+                .defineListAllowEmpty(Whitelist.name(), () -> DEFAULT_WHITELIST, o -> o instanceof String);
         BLACKLIST = BUILDER.translation(Blacklist.key())
                 .comment("黑名单模式下这些属性完全不显示、也不可修改；白名单模式下本项被忽略")
-                .defineListAllowEmpty(Blacklist.name(), List.<String>of(), () -> "", o -> o instanceof String);
+                .defineListAllowEmpty(Blacklist.name(), () -> List.<String>of(), o -> o instanceof String);
         DEFAULT_RANGE = BUILDER.translation(DefaultRange.key())
                 .comment("没有单独配置的属性使用这个范围；留空表示这些属性不出现在界面里")
                 .define(DefaultRange.name(), "[min, current]");
@@ -80,7 +79,7 @@ public final class ServerConfig {
         BUILDER.translation(Ranges.key()).comment("逐个属性覆盖范围").push(Ranges.name());
         RANGE_OVERRIDES = BUILDER.translation(Entries.key())
                 .comment("每行一条，格式：属性ID=[下界, 上界]")
-                .defineListAllowEmpty(Entries.name(), List.<String>of(), () -> "", o -> o instanceof String);
+                .defineListAllowEmpty(Entries.name(), () -> List.<String>of(), o -> o instanceof String);
         BUILDER.pop();
 
         SPEC = BUILDER.build();
@@ -98,7 +97,7 @@ public final class ServerConfig {
     }
 
     public static int syncInterval() {
-        return SPEC.isLoaded() ? SYNC_INTERVAL_TICKS.get() : 1;
+        return SPEC.isLoaded() ? SYNC_INTERVAL_TICKS.get() : 5;
     }
 
     public static String defaultRange() {

@@ -17,7 +17,6 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.ai.attributes.Attribute;
-import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -118,8 +117,8 @@ public class AttributeScreen extends Screen {
     }
 
     @Override
-    public void render(@NotNull GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-        renderBackground(graphics, mouseX, mouseY, partialTick);
+    public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+        renderBackground(graphics);
         renderFrame(graphics);
 
         graphics.enableScissor(listLeft, listTop, listLeft + listWidth, listBottom);
@@ -185,12 +184,12 @@ public class AttributeScreen extends Screen {
     }
 
     @Override
-    public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+    public boolean mouseScrolled(double mouseX, double mouseY, double delta) {
         int max = maxScroll();
         if (max <= 0) {
-            return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
+            return super.mouseScrolled(mouseX, mouseY, delta);
         }
-        int updated = Mth.clamp(scroll - (int) Math.round(scrollY * ROW_HEIGHT / 2.0), 0, max);
+        int updated = Mth.clamp(scroll - (int) Math.round(delta * ROW_HEIGHT / 2.0), 0, max);
         if (updated != scroll) {
             this.scroll = updated;
             layoutRows();
