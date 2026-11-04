@@ -32,8 +32,8 @@ public class CustomAttributesConfigLang extends CustomAttributesLang {
             "Attribute ids that are hidden and locked while List Mode is BLACKLIST. Ignored in WHITELIST mode.",
             "名单模式为 BLACKLIST 时不显示且不可调的属性ID；WHITELIST 模式下本项被忽略。");
     public static final ConfigLangEntry DefaultRangeTooltip = entry(DefaultRange.tooltipName(),
-            "Applied to attributes that have no override entry. Write [lower, upper] and the attribute is editable only while lower is smaller than upper; a reversed order disables it. Values outside the range are pushed back into it by the server. Wildcards: current (final value), base, default, min, max, inf; arithmetic and parentheses are supported, e.g. [min, current] or [current * 0.5, current].",
-            "作用于没有单独配置的属性。写成 [下界, 上界]，只有下界小于上界时该属性才可调，反过来（大到小）则直接禁用；超出区间的数值会被服务端夹回区间。通配符：当前值、基础值、默认值、最小值、最大值、无穷，支持四则运算与括号，例如 [min, current] 或 [当前值 * 0.5, 当前值]。");
+            "Applied to attributes that have no override entry. Write [lower, upper] and the attribute is editable only while lower is smaller than upper; a reversed order disables it. Values outside the range are pushed back into it by the server. Wildcards: current (final value without this mod's own adjustment), base, default, min, max, inf; arithmetic and parentheses are supported, e.g. [min, current] or [current * 0.5, current].",
+            "作用于没有单独配置的属性。写成 [下界, 上界]，只有下界小于上界时该属性才可调，反过来（大到小）则直接禁用；超出区间的数值会被服务端夹回区间。通配符：当前值（不含本模组调整的最终值）、基础值、默认值、最小值、最大值、无穷，支持四则运算与括号，例如 [min, current] 或 [当前值 * 0.5, 当前值]。");
     public static final ConfigLangEntry EntriesTooltip = entry(Entries.tooltipName(),
             "One entry per line: \"attribute_id=[lower, upper]\". Example: minecraft:generic.movement_speed=[0, current]",
             "每行一条：\"属性ID=[下界, 上界]\"。例如 minecraft:generic.movement_speed=[0, current]");

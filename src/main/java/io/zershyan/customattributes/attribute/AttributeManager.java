@@ -1,7 +1,7 @@
 package io.zershyan.customattributes.attribute;
 
-import io.zershyan.customattributes.registry.config.ServerConfig;
-import io.zershyan.customattributes.registry.packet.AttributeListPacket;
+import io.zershyan.customattributes.registry.CustomAttributesAttachments;
+import io.zershyan.customattributes.registry.config.ServerConfig;import io.zershyan.customattributes.registry.packet.AttributeListPacket;
 import io.zershyan.customattributes.registry.packet.AttributeUpdatePacket;
 import net.minecraft.core.Holder;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -102,39 +102,40 @@ public final class AttributeManager {
     }
 
     /**
-     * 单次遍历完成两件事：把超出区间的最终值夹回区间；给打开了界面的玩家推送变化。
-     * 未订阅的玩家只做夹取，不产生任何网络流量。列表结构变化（属性出现或区间失效）时打标记，稍后整表重发。
+     * 单次遍历完成三件事：清掉已不可用属性的调整、把最终值钉回玩家设定的目标（未设定的则夹进区间）、
+     * 给打开了界面的玩家推送变化。未订阅的玩家只做前两件，不产生任何网络流量。
      */
     private static void enforcePlayer(ServerPlayer player, Watch watch) {
+        Map<ResourceLocation, Double> targets = targetsOf(player);
+        dropUnavailable(player, targets);
+
         for (Target target : targets()) {
             AttributeInstance instance = player.getAttribute(target.holder);
             if (instance == null) {
                 forget(watch, target.id);
                 continue;
             }
-            ValueRange range = RangeRules.rangeOf(instance, target.id, target.defaultValue).orElse(null);
+            ValueRange range = currentRange(instance, target.id, target.defaultValue);
             if (range == null) {
-                // 区间失效（下界大于上界、被拉黑、配置无法满足）：界面上的这一行应当消失
+                // 区间暂时失效（下界大于上界）：保留玩家的目标，但这一行先不显示
                 forget(watch, target.id);
                 continue;
             }
-            double value = instance.getValue();
-            if (value < range.min() || value > range.max()) {
-                value = clampInto(instance, target, range, value);
-                if (Double.isNaN(value)) {
-                    forget(watch, target.id);
-                    continue;
-                }
-                range = RangeRules.rangeOf(instance, target.id, target.defaultValue).orElse(null);
-                if (range == null) {
-                    forget(watch, target.id);
-                    continue;
-                }
+
+            Double wanted = targets.get(target.id);
+            double unadjusted = AttributeAdjustments.unadjustedValue(instance);
+            double desired = range.clamp(wanted == null ? unadjusted : wanted);
+            if (!syncValue(instance, desired, unadjusted)) {
+                RangeRules.markUnsatisfiable(target.id);
+                forget(watch, target.id);
+                continue;
             }
+
             if (watch == null) {
                 continue;
             }
-            AttributeEntry candidate = entryOf(target.id, target.defaultValue, instance, value, range);
+            AttributeEntry candidate = new AttributeEntry(target.id, instance.getValue(),
+                    range.min(), range.max(), wanted != null);
             AttributeEntry last = watch.entries.get(target.id);
             if (last == null) {
                 // 新出现的可调属性：客户端还不知道这一行，需要整表重发
@@ -149,11 +150,38 @@ public final class AttributeManager {
         }
     }
 
-    private static AttributeEntry entryOf(ResourceLocation id, double defaultValue, AttributeInstance instance,
-                                          double value, ValueRange range) {
-        boolean modified = Math.abs(instance.getBaseValue() - defaultValue) > EPSILON;
-        return new AttributeEntry(id, value, range.min(), range.max(), modified);
+    /**
+     * 让最终值落到 {@code desired}。
+     * <p>目标值不依赖当前修饰，所以装备、药水或乘区变化后重新求解就能回到原来的数，不会跟着漂移。</p>
+     */
+    private static boolean syncValue(AttributeInstance instance, double desired, double unadjusted) {
+        if (Math.abs(desired - unadjusted) <= EPSILON) {
+            // 不需要偏移（未调整，或被夹回后正好等于原始值）：撤掉修饰器，别在装备变化后留下残留
+            AttributeAdjustments.clear(instance);
+            return true;
+        }
+        if (Math.abs(instance.getValue() - desired) <= EPSILON) {
+            return true;
+        }
+        return AttributeAdjustments.setValue(instance, desired);
     }
+
+    /** 名单变化后，把已经不再允许调整的属性上的目标与修饰器一起清掉，避免数值被无声地钉住。 */
+    private static void dropUnavailable(ServerPlayer player, Map<ResourceLocation, Double> targets) {
+        if (targets.isEmpty()) {
+            return;
+        }
+        targets.keySet().removeIf(id -> {
+            if (RangeRules.isAllowed(id)) {
+                return false;
+            }
+            BuiltInRegistries.ATTRIBUTE.getHolder(id)
+                    .map(player::getAttribute)
+                    .ifPresent(AttributeAdjustments::clear);
+            return true;
+        });
+    }
+
 
     /** 数值、区间或"是否已被改动"任一变化都要下发，否则界面会停在旧状态。 */
     private static boolean differs(AttributeEntry last, AttributeEntry current) {
@@ -163,24 +191,6 @@ public final class AttributeManager {
                 || last.modified() != current.modified();
     }
 
-    /**
-     * 把越界值夹回区间，并确认夹完之后真的在区间里。
-     * 夹不进说明配置自相矛盾（例如上界跟着当前值一起降）或数值被修饰锁死，此时回滚并停用该属性。
-     *
-     * @return 夹取后的最终值；无法满足时返回 {@link Double#NaN}
-     */
-    private static double clampInto(AttributeInstance instance, Target target, ValueRange range, double value) {
-        double baseBefore = instance.getBaseValue();
-        setFinalValue(instance, range.clamp(value));
-        double clamped = instance.getValue();
-        ValueRange after = RangeRules.rangeOf(instance, target.id, target.defaultValue).orElse(null);
-        if (after == null || clamped < after.min() || clamped > after.max()) {
-            instance.setBaseValue(baseBefore);
-            RangeRules.markUnsatisfiable(target.id);
-            return Double.NaN;
-        }
-        return clamped;
-    }
 
     /** 属性从界面上消失时同步掉订阅快照里的条目，并请求整表重发。 */
     private static void forget(Watch watch, ResourceLocation id) {
@@ -192,8 +202,7 @@ public final class AttributeManager {
 
     /**
      * 处理玩家提交的修改或重置，只有打开过界面的玩家才会被受理。
-     * <p>区间方向不成立（下界大于上界）时连重置一并拒绝；区间塌缩成一个点时只允许重置，
-     * 这样把值调到下限也不会把自己锁死。</p>
+     * <p>区间方向不成立（下界大于上界）时连重置一并拒绝；区间塌缩成一个点时只允许重置。</p>
      */
     public static void apply(ServerPlayer player, ResourceLocation id, boolean reset, double requested) {
         if (!ServerConfig.isEnabled()) {
@@ -213,13 +222,16 @@ public final class AttributeManager {
         }
         RangeRules.reload();
         double defaultValue = defaultValueOf(holder);
-        ValueRange range = RangeRules.rangeOf(instance, id, defaultValue).orElse(null);
+        ValueRange range = currentRange(instance, id, defaultValue);
+        Map<ResourceLocation, Double> targets = targetsOf(player);
         if (range != null) {
             if (reset) {
-                // 直接写回默认基础值：区间会随后按新值重新求值，超出部分由周期夹取兜底
-                instance.setBaseValue(defaultValue);
+                targets.remove(id);
+                AttributeAdjustments.clear(instance);
             } else if (range.isAscending() && Double.isFinite(requested)) {
-                setFinalValue(instance, range.clamp(requested));
+                double target = range.clamp(requested);
+                targets.put(id, target);
+                AttributeAdjustments.setValue(instance, target);
             }
         }
         // 无论是否生效都回报真实状态，避免界面停在服务端没有接受的值上
@@ -230,36 +242,14 @@ public final class AttributeManager {
         if (!watch.entries.containsKey(id)) {
             return;
         }
-        ValueRange range = RangeRules.rangeOf(instance, id, defaultValue).orElse(null);
+        ValueRange range = currentRange(instance, id, defaultValue);
         if (range == null) {
             return;
         }
-        AttributeEntry entry = entryOf(id, defaultValue, instance, instance.getValue(), range);
+        AttributeEntry entry = new AttributeEntry(id, instance.getValue(), range.min(), range.max(),
+                targetsOf(player).containsKey(id));
         watch.entries.put(id, entry);
         PacketDistributor.sendToPlayer(player, new AttributeUpdatePacket(entry));
-    }
-
-    /**
-     * 把最终值调到 {@code target}：最终值对基础值是仿射的，先用一次试值测斜率，再精确反解。
-     */
-    private static void setFinalValue(AttributeInstance instance, double target) {
-        double before = instance.getValue();
-        if (Math.abs(target - before) <= EPSILON) {
-            return;
-        }
-        double baseBefore = instance.getBaseValue();
-        double guess = baseBefore + (target - before);
-        instance.setBaseValue(guess);
-        double after = instance.getValue();
-        if (Math.abs(after - target) <= EPSILON) {
-            return;
-        }
-        double slope = (after - before) / (guess - baseBefore);
-        if (!Double.isFinite(slope) || Math.abs(slope) <= EPSILON) {
-            instance.setBaseValue(baseBefore);
-            return;
-        }
-        instance.setBaseValue(baseBefore + (target - before) / slope);
     }
 
     private static List<AttributeEntry> buildEntries(ServerPlayer player) {
@@ -267,17 +257,28 @@ public final class AttributeManager {
             return List.of();
         }
         List<AttributeEntry> entries = new ArrayList<>();
+        Map<ResourceLocation, Double> targets = targetsOf(player);
         for (Target target : targets()) {
             AttributeInstance instance = player.getAttribute(target.holder);
             if (instance == null) {
                 continue;
             }
-            ValueRange range = RangeRules.rangeOf(instance, target.id, target.defaultValue).orElse(null);
+            ValueRange range = currentRange(instance, target.id, target.defaultValue);
             if (range != null) {
-                entries.add(entryOf(target.id, target.defaultValue, instance, instance.getValue(), range));
+                entries.add(new AttributeEntry(target.id, instance.getValue(), range.min(), range.max(),
+                        targets.containsKey(target.id)));
             }
         }
         return entries;
+    }
+
+    /** 求值区间时传的是"未经过本模组调整"的最终值，玩家自己调低不会让区间缩水。 */
+    private static ValueRange currentRange(AttributeInstance instance, ResourceLocation id, double defaultValue) {
+        return RangeRules.rangeOf(instance, id, defaultValue, AttributeAdjustments.unadjustedValue(instance)).orElse(null);
+    }
+
+    private static Map<ResourceLocation, Double> targetsOf(ServerPlayer player) {
+        return player.getData(CustomAttributesAttachments.TARGETS);
     }
 
     private static List<Target> targets() {

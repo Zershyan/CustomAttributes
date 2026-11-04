@@ -101,9 +101,10 @@ public final class RangeRules {
     /**
      * @param id           属性ID，由调用方缓存好，避免每次求值都从 Holder 上取键
      * @param defaultValue 该实体类型上的默认基础值，用于 {@code default} 通配符
+     * @param current      不含本模组调整的最终值，用于 {@code current} 通配符：玩家自己调低不会让它变小
      * @return 可调区间；名单未放行、属性非区间属性或配置算出的方向反过来（下界大于上界）时为空
      */
-    public static Optional<ValueRange> rangeOf(AttributeInstance instance, ResourceLocation id, double defaultValue) {
+    public static Optional<ValueRange> rangeOf(AttributeInstance instance, ResourceLocation id, double defaultValue, double current) {
         if (!loaded) {
             reload();
         }
@@ -122,7 +123,7 @@ public final class RangeRules {
         }
 
         RangeContext context = new RangeContext(
-                instance.getValue(), instance.getBaseValue(), defaultValue, ranged.getMinValue(), ranged.getMaxValue());
+                current, instance.getBaseValue(), defaultValue, ranged.getMinValue(), ranged.getMaxValue());
         double lower = Math.max(parsed.lower().evaluate(context), ranged.getMinValue());
         double upper = Math.min(parsed.upper().evaluate(context), ranged.getMaxValue());
         ValueRange range = new ValueRange(lower, upper);
@@ -131,7 +132,10 @@ public final class RangeRules {
     }
 
     /** 白名单模式只放行名单内的属性，黑名单模式只拦名单内的属性。 */
-    private static boolean isAllowed(ResourceLocation id) {
+    public static boolean isAllowed(ResourceLocation id) {
+        if (!loaded) {
+            reload();
+        }
         return mode == AttributeListMode.WHITELIST ? whitelist.contains(id) : !blacklist.contains(id);
     }
 

@@ -5,7 +5,7 @@
   "customattributes.configuration.blacklist": "Blacklist",
   "customattributes.configuration.blacklist.tooltip": "Attribute ids that are hidden and locked while List Mode is BLACKLIST. Ignored in WHITELIST mode.",
   "customattributes.configuration.default_range": "Default Range",
-  "customattributes.configuration.default_range.tooltip": "Applied to attributes that have no override entry. Write [lower, upper] and the attribute is editable only while lower is smaller than upper; a reversed order disables it. Values outside the range are pushed back into it by the server. Wildcards: current (final value), base, default, min, max, inf; arithmetic and parentheses are supported, e.g. [min, current] or [current * 0.5, current].",
+  "customattributes.configuration.default_range.tooltip": "Applied to attributes that have no override entry. Write [lower, upper] and the attribute is editable only while lower is smaller than upper; a reversed order disables it. Values outside the range are pushed back into it by the server. Wildcards: current (final value without this mod's own adjustment), base, default, min, max, inf; arithmetic and parentheses are supported, e.g. [min, current] or [current * 0.5, current].",
   "customattributes.configuration.enabled": "Enabled",
   "customattributes.configuration.entries": "Entries",
   "customattributes.configuration.entries.tooltip": "One entry per line: \"attribute_id=[lower, upper]\". Example: minecraft:generic.movement_speed=[0, current]",

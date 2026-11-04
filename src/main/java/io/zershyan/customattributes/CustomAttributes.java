@@ -1,5 +1,6 @@
 package io.zershyan.customattributes;
 
+import io.zershyan.customattributes.registry.CustomAttributesAttachments;
 import io.zershyan.customattributes.registry.CustomAttributesCommands;
 import io.zershyan.customattributes.registry.CustomAttributesConfigs;
 import io.zershyan.customattributes.registry.CustomAttributesKeyMappings;
@@ -20,6 +21,7 @@ public class CustomAttributes {
 
     public CustomAttributes(IEventBus modEventBus, Dist dist, ModContainer modContainer) {
         CustomAttributesPackets.doRegister(modEventBus);
+        CustomAttributesAttachments.doRegister(modEventBus);
         CustomAttributesConfigs.doRegister(modContainer);
         CustomAttributesCommands.doRegister(NeoForge.EVENT_BUS);
 

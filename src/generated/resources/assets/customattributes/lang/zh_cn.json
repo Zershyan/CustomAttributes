@@ -5,7 +5,7 @@
   "customattributes.configuration.blacklist": "黑名单属性",
   "customattributes.configuration.blacklist.tooltip": "名单模式为 BLACKLIST 时不显示且不可调的属性ID；WHITELIST 模式下本项被忽略。",
   "customattributes.configuration.default_range": "默认可调范围",
-  "customattributes.configuration.default_range.tooltip": "作用于没有单独配置的属性。写成 [下界, 上界]，只有下界小于上界时该属性才可调，反过来（大到小）则直接禁用；超出区间的数值会被服务端夹回区间。通配符：当前值、基础值、默认值、最小值、最大值、无穷，支持四则运算与括号，例如 [min, current] 或 [当前值 * 0.5, 当前值]。",
+  "customattributes.configuration.default_range.tooltip": "作用于没有单独配置的属性。写成 [下界, 上界]，只有下界小于上界时该属性才可调，反过来（大到小）则直接禁用；超出区间的数值会被服务端夹回区间。通配符：当前值（不含本模组调整的最终值）、基础值、默认值、最小值、最大值、无穷，支持四则运算与括号，例如 [min, current] 或 [当前值 * 0.5, 当前值]。",
   "customattributes.configuration.enabled": "启用本模组",
   "customattributes.configuration.entries": "覆盖条目",
   "customattributes.configuration.entries.tooltip": "每行一条：\"属性ID=[下界, 上界]\"。例如 minecraft:generic.movement_speed=[0, current]",
