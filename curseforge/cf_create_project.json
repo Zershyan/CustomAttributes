@@ -1,0 +1,16 @@
+{
+  "name": "Custom Attributes",
+  "summary": "Tune your own attributes in game, with the editable range defined by the server.",
+  "license": "MIT",
+  "distribution": "Allow distribution to 3rd party",
+  "allowComments": true,
+  "projectPages": true,
+  "autoCreate": true,
+  "dropdowns": [
+    ["Class", "Mods"],
+    ["Main category", "Utility & QoL"],
+    ["Additional categories", "Server Utility"]
+  ],
+  "description": "description.md",
+  "icon": "../src/main/resources/logo.png"
+}

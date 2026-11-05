@@ -1,0 +1,13 @@
+{
+  "projectId": 1784731,
+  "slug": "custom-attributes",
+  "name": "Custom Attributes",
+  "game": "Minecraft",
+  "class": "Mods",
+  "mainCategory": "Utility & QoL",
+  "additionalCategories": ["Server Utility"],
+  "license": "MIT",
+  "allowComments": true,
+  "projectPages": true,
+  "createdAt": "2026-11-05"
+}
