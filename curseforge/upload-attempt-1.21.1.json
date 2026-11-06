@@ -1,11 +1,11 @@
 {
-  "startedUtc": "2026-11-05T07:17:29.841309+00:00",
-  "sha256": "0e6212805d2aff713b1a13f9636f94e1e5d870682e25cd096f5e02fb6d1f2fe6",
+  "startedUtc": "2026-11-06T06:11:31.369797+00:00",
+  "sha256": "a4f0dfdbd3dfb5e59731486296c431021e12587500b27428bd550e8cda39e0d2",
   "metadata": {
-    "changelog": "First release: in-game attribute screen, server-side range configuration and the range expression parser.\n\n- Keybind `K` and `/customattributes` to open the screen\n- Slider, exact value input and per-attribute reset\n- Whitelist / blacklist modes with 20 preset attributes\n- Range expressions with `current`, `base`, `default`, `min`, `max`, `inf` and arithmetic\n- Out-of-range values are clamped by the server on every sync tick\n\n---\n\n首个发布版本：属性调整界面、服务端范围配置与范围表达式解析器。\n\n- 按键 `K` 或 `/customattributes` 打开界面\n- 滑块、精确数值输入与逐项重置\n- 白名单 / 黑名单模式，预置 20 个常见属性\n- 范围表达式支持 `current`、`base`、`default`、`min`、`max`、`inf` 与四则运算\n- 越界数值由服务端每个同步间隔夹回区间",
+    "changelog": "Maintenance release: the mod now ships its own icon. Gameplay and configuration are unchanged from 0.0.1.\n\n---\n\n维护版本：补上模组图标，玩法与配置与 0.0.1 一致。",
     "changelogType": "markdown",
-    "displayName": "customattributes-0.0.1-1.21.1",
-    "releaseType": "release",
+    "displayName": "customattributes-0.0.2-1.21.1",
+    "releaseType": "beta",
     "gameVersions": [
       11779,
       10150,

@@ -1,0 +1,17 @@
+{
+  "startedUtc": "2026-11-06T06:11:46.806079+00:00",
+  "sha256": "d9c3ed4b97fd5510dc95985380d4702217b87458f47f2035bd6579ea5ada66fd",
+  "metadata": {
+    "changelog": "First release for Forge 1.20.1.\n\n- In-game attribute screen: keybind `K` or `/customattributes`\n- Slider, exact value input and per-attribute reset\n- Whitelist / blacklist mode with 19 preset attributes\n- Range expressions with `current`, `base`, `default`, `min`, `max`, `inf` and arithmetic\n- Adjustments lock to the chosen value, so equipment and potion changes do not pull it away\n- Requires forgeattachment 0.0.1-1.20.1+build.0 or newer\n\n---\n\n首个 Forge 1.20.1 版本。\n\n- 游戏内属性调整界面：按键 `K` 或 `/customattributes`\n- 滑块、精确数值输入与逐项重置\n- 白名单 / 黑名单模式，预置 19 个常见属性\n- 范围表达式支持 `current`、`base`、`default`、`min`、`max`、`inf` 与四则运算\n- 调整锁定在玩家选定的值上，装备与药水变化不会把它带走\n- 需要 forgeattachment 0.0.1-1.20.1+build.0 或更高版本",
+    "changelogType": "markdown",
+    "displayName": "customattributes-0.0.2-1.20.1",
+    "releaseType": "beta",
+    "gameVersions": [
+      9990,
+      7498,
+      8326,
+      9638,
+      9639
+    ]
+  }
+}

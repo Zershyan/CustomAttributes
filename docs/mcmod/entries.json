@@ -5,7 +5,16 @@
     "modid": "customattributes",
     "cfprojectid": "1784731",
     "status": "待审核",
-    "submittedAt": "2026-11-05",
-    "verifyList": "https://www.mcmod.cn/verify.html?selfonly=1&order=createtime"
+    "verifyList": "https://www.mcmod.cn/verify.html?selfonly=1&order=createtime",
+    "submissions": [
+      {
+        "submittedAt": "2026-11-05",
+        "note": "首次提交（NeoForge 1.21.1）"
+      },
+      {
+        "submittedAt": "2026-11-06",
+        "note": "补充 1.20.1 / Forge 支持、版本依赖与配置路径差异；因原条目仍待审核无法编辑，本次为重新提交，列表中将出现两条同名条目，需要撤回其一或等审核合并"
+      }
+    ]
   }
 }
